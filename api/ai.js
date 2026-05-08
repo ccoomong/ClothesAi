@@ -25,8 +25,10 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'messages 배열이 필요합니다' });
   }
 
+  // 무료 tier에서 70b는 TPM 한도가 좁아 429 빈발 → 8b instant로 다운그레이드 (안정성 우선)
+  // 결선 단계에서 paid tier 또는 다른 백본(Cerebras Llama 70B 등)으로 업그레이드 검토
   const groqPayload = {
-    model: 'llama-3.3-70b-versatile',
+    model: 'llama-3.1-8b-instant',
     messages: messages.map((m) => ({
       role: m.role === 'assistant' ? 'assistant' : 'user',
       content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
@@ -59,7 +61,7 @@ export default async function handler(req, res) {
       id: `groq-${Date.now()}`,
       type: 'message',
       role: 'assistant',
-      model: 'llama-3.3-70b-versatile',
+      model: 'llama-3.1-8b-instant',
       content: [{ type: 'text', text: groqText }],
       stop_reason: data.choices?.[0]?.finish_reason || 'end_turn',
       usage: {
