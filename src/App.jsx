@@ -158,7 +158,7 @@ const callAI = async (profile, styleQuery) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 3500,
+      max_tokens: 2500,
       messages: [{ role: 'user', content: prompt }],
     }),
   });

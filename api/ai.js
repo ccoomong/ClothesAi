@@ -19,7 +19,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'GROQ_API_KEY 환경변수 미설정' });
   }
 
-  const { messages, max_tokens = 4000 } = req.body;
+  const { messages, max_tokens = 2500 } = req.body;
 
   if (!messages || !Array.isArray(messages)) {
     return res.status(400).json({ error: 'messages 배열이 필요합니다' });
