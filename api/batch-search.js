@@ -38,7 +38,9 @@ function getMallTier(mallName) {
   return 4; // 그 외 (스마트스토어 등)
 }
 
-const MODEL_SHOT_KEYWORDS = /모델|착용샷|코디|룩북|화보|model|outfit/i;
+// 모델샷·멀티컷·세트 시그널 — 누끼 단독컷이 아닐 가능성 높음
+const MODEL_SHOT_KEYWORDS = /모델|착용샷|코디|룩북|화보|기획전|model|outfit/i;
+const MULTI_PRODUCT_KEYWORDS = /세트|묶음|콤보|패키지|풀세트|풀구성|컬러구성|컬러별|2종|3종|4종|5종|set|combo|pack|bundle|multipack/i;
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -98,6 +100,7 @@ async function searchNaver(query, display, sort, slot = 'default') {
     const cleanName = stripHtml(item.title);
     const mallTier = getMallTier(mall);
     const hasModelKeyword = MODEL_SHOT_KEYWORDS.test(cleanName);
+    const hasMultiProductKeyword = MULTI_PRODUCT_KEYWORDS.test(cleanName);
 
     return {
       name: cleanName,
@@ -112,6 +115,7 @@ async function searchNaver(query, display, sort, slot = 'default') {
       _link_type: linkType,
       _mall_tier: mallTier,
       _has_model_keyword: hasModelKeyword,
+      _has_multi_keyword: hasMultiProductKeyword,
     };
   });
 
@@ -126,18 +130,20 @@ async function searchNaver(query, display, sort, slot = 'default') {
     const aHasImg = !!(a.image_url && a.image_url.startsWith('http'));
     const bHasImg = !!(b.image_url && b.image_url.startsWith('http'));
     if (aHasImg !== bHasImg) return aHasImg ? -1 : 1;
-    // 1순위: 몰 티어 (낮을수록 누끼 비중 높음)
+    // 1순위: 멀티컷/세트 상품 강력 후순위 (모델 3명 카탈로그 컷 방지)
+    if (a._has_multi_keyword !== b._has_multi_keyword) return a._has_multi_keyword ? 1 : -1;
+    // 2순위: 몰 티어 (낮을수록 누끼 비중 높음)
     if (a._mall_tier !== b._mall_tier) return a._mall_tier - b._mall_tier;
-    // 2순위: 모델/착용샷 키워드 없는 거 우선
+    // 3순위: 모델/착용샷 키워드 없는 거 우선
     if (a._has_model_keyword !== b._has_model_keyword) return a._has_model_keyword ? 1 : -1;
-    // 3순위: 직링 종류
+    // 4순위: 직링 종류
     const lp = (linkPriority[a._link_type] || 99) - (linkPriority[b._link_type] || 99);
     if (lp !== 0) return lp;
-    // 4순위: 가격 낮은 순
+    // 5순위: 가격 낮은 순
     return (a.price_num || 0) - (b.price_num || 0);
   });
 
-  return final.map(({ _link_type, _mall_tier, _has_model_keyword, ...rest }) => rest);
+  return final.map(({ _link_type, _mall_tier, _has_model_keyword, _has_multi_keyword, ...rest }) => rest);
 }
 
 function cleanProductUrl(url) {

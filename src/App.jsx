@@ -223,8 +223,11 @@ const callAI = async (profile, styleQuery) => {
       const item = outfit.items[slot];
       if (!item) return;
       const candidates = slotMap[`${oi}-${slot}`] || [];
-      // 이미지 URL 있는 후보 우선, 없으면 첫 번째로 폴백
-      const picked = candidates.find((c) => c.image_url && /^https?:\/\//.test(c.image_url)) || candidates[0];
+      // 이미지 URL 있는 후보만 추려내고, outfit 인덱스에 따라 다른 후보 픽 (룩북별 다양성 확보)
+      const validCandidates = candidates.filter((c) => c.image_url && /^https?:\/\//.test(c.image_url));
+      const pool = validCandidates.length > 0 ? validCandidates : candidates;
+      const idx = oi < pool.length ? oi : 0;
+      const picked = pool[idx];
       if (picked) {
         item.name = picked.name;
         item.image_url = picked.image_url;
