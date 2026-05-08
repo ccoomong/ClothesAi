@@ -568,33 +568,37 @@ function LookbookCard({ outfit, index, total }) {
       </div>
 
       <div className="relative pt-32 pb-6 px-4">
-        <div className="grid grid-cols-12 gap-2 relative">
+        <div className="flex flex-col items-center" style={{ gap: 0 }}>
           {outfit.items.hat && (
             <a href={outfit.items.hat.product_url} target="_blank" rel="noopener noreferrer"
-              className="col-span-4 product-shadow btn-press relative group cursor-pointer"
-              style={{ height: 140, marginTop: 10 }}>
-              <ProductImage item={outfit.items.hat} slot="hat" alt={outfit.items.hat.name} className="w-full h-full" style={{ background: 'transparent' }} />
+              className="product-shadow btn-press relative group cursor-pointer"
+              style={{ width: 140, height: 110, marginBottom: -8, zIndex: 4 }}>
+              <ProductImage item={outfit.items.hat} slot="hat" alt={outfit.items.hat.name}
+                className="w-full h-full" style={{ background: 'transparent' }} />
             </a>
           )}
           {outfit.items.top && (
             <a href={outfit.items.top.product_url} target="_blank" rel="noopener noreferrer"
-              className="col-span-7 col-start-6 product-shadow btn-press relative group cursor-pointer"
-              style={{ height: 240, marginTop: -20 }}>
-              <ProductImage item={outfit.items.top} slot="top" alt={outfit.items.top.name} className="w-full h-full" style={{ background: 'transparent' }} />
+              className="product-shadow btn-press relative group cursor-pointer"
+              style={{ width: 240, height: 240, marginBottom: -16, zIndex: 3 }}>
+              <ProductImage item={outfit.items.top} slot="top" alt={outfit.items.top.name}
+                className="w-full h-full" style={{ background: 'transparent' }} />
             </a>
           )}
           {outfit.items.bottom && (
             <a href={outfit.items.bottom.product_url} target="_blank" rel="noopener noreferrer"
-              className="col-span-7 col-start-4 product-shadow btn-press relative group cursor-pointer"
-              style={{ height: 260, marginTop: -50 }}>
-              <ProductImage item={outfit.items.bottom} slot="bottom" alt={outfit.items.bottom.name} className="w-full h-full" style={{ background: 'transparent' }} />
+              className="product-shadow btn-press relative group cursor-pointer"
+              style={{ width: 220, height: 260, marginBottom: -12, zIndex: 2 }}>
+              <ProductImage item={outfit.items.bottom} slot="bottom" alt={outfit.items.bottom.name}
+                className="w-full h-full" style={{ background: 'transparent' }} />
             </a>
           )}
           {outfit.items.shoes && (
             <a href={outfit.items.shoes.product_url} target="_blank" rel="noopener noreferrer"
-              className="col-span-5 col-start-1 product-shadow btn-press relative group cursor-pointer"
-              style={{ height: 130, marginTop: -40 }}>
-              <ProductImage item={outfit.items.shoes} slot="shoes" alt={outfit.items.shoes.name} className="w-full h-full" style={{ background: 'transparent' }} />
+              className="product-shadow btn-press relative group cursor-pointer"
+              style={{ width: 160, height: 110, zIndex: 1 }}>
+              <ProductImage item={outfit.items.shoes} slot="shoes" alt={outfit.items.shoes.name}
+                className="w-full h-full" style={{ background: 'transparent' }} />
             </a>
           )}
         </div>
