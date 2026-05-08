@@ -845,6 +845,10 @@ export default function App() {
     return () => { document.head.removeChild(styleEl); };
   }, []);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [step]);
+
   const submitStyle = async () => {
     setError('');
     setStep('loading');
