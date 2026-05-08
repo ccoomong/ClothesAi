@@ -564,7 +564,7 @@ function HoverPreview({ item, slot }) {
         borderLeft: '2px solid var(--ink)',
         boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
         transition: 'opacity 0.2s ease',
-        zIndex: 50,
+        zIndex: 30,
       }}
     >
       <div className="font-body text-[9px] tracking-[0.25em] uppercase" style={{ color: 'var(--accent)' }}>
@@ -731,15 +731,15 @@ function LookbookGallery({ outfits }) {
       </div>
 
       <div className="relative">
-        <button onClick={goPrev} disabled={current === 0}
-          className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-12 z-30 w-10 h-10 rounded-full hidden md:flex items-center justify-center btn-press"
-          style={{ background: 'var(--ink)', color: 'var(--cream)', opacity: current === 0 ? 0.2 : 1, cursor: current === 0 ? 'not-allowed' : 'pointer' }}>
-          <ChevronLeft size={20} />
+        <button onClick={goPrev} disabled={current === 0} type="button"
+          className="absolute left-2 top-1/2 -translate-y-1/2 z-50 w-12 h-12 rounded-full hidden md:flex items-center justify-center btn-press"
+          style={{ background: 'var(--ink)', color: 'var(--cream)', opacity: current === 0 ? 0.2 : 1, cursor: current === 0 ? 'not-allowed' : 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+          <ChevronLeft size={22} />
         </button>
-        <button onClick={goNext} disabled={current === total - 1}
-          className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-12 z-30 w-10 h-10 rounded-full hidden md:flex items-center justify-center btn-press"
-          style={{ background: 'var(--ink)', color: 'var(--cream)', opacity: current === total - 1 ? 0.2 : 1, cursor: current === total - 1 ? 'not-allowed' : 'pointer' }}>
-          <ChevronRight size={20} />
+        <button onClick={goNext} disabled={current === total - 1} type="button"
+          className="absolute right-2 top-1/2 -translate-y-1/2 z-50 w-12 h-12 rounded-full hidden md:flex items-center justify-center btn-press"
+          style={{ background: 'var(--ink)', color: 'var(--cream)', opacity: current === total - 1 ? 0.2 : 1, cursor: current === total - 1 ? 'not-allowed' : 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+          <ChevronRight size={22} />
         </button>
 
         <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
