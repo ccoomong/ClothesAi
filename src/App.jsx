@@ -203,7 +203,7 @@ const callAI = async (profile, styleQuery) => {
   const searchResponse = await fetch(`/api/batch-search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ queries }),
+    body: JSON.stringify({ queries, gender: profile.gender }),
   });
 
   if (!searchResponse.ok) {
