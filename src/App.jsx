@@ -195,7 +195,7 @@ const callAI = async (profile, styleQuery) => {
       queries.push({
         slot: `${oi}-${slot}`,
         keyword: item.search_keyword,
-        display: 5,
+        display: 10,
       });
     });
   });
@@ -226,7 +226,7 @@ const callAI = async (profile, styleQuery) => {
       // 이미지 URL 있는 후보만 추려내고, outfit 인덱스에 따라 다른 후보 픽 (룩북별 다양성 확보)
       const validCandidates = candidates.filter((c) => c.image_url && /^https?:\/\//.test(c.image_url));
       const pool = validCandidates.length > 0 ? validCandidates : candidates;
-      const idx = oi < pool.length ? oi : 0;
+      const idx = pool.length > 0 ? oi % pool.length : 0;
       const picked = pool[idx];
       if (picked) {
         item.name = picked.name;
@@ -742,40 +742,15 @@ function LookbookGallery({ outfits }) {
       </div>
 
       <div className="relative">
-        <button onClick={goPrev} disabled={current === 0} type="button"
-          className="absolute left-2 top-1/2 -translate-y-1/2 z-50 w-12 h-12 rounded-full hidden md:flex items-center justify-center btn-press"
-          style={{ background: 'var(--ink)', color: 'var(--cream)', opacity: current === 0 ? 0.2 : 1, cursor: current === 0 ? 'not-allowed' : 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
-          <ChevronLeft size={22} />
-        </button>
-        <button onClick={goNext} disabled={current === total - 1} type="button"
-          className="absolute right-2 top-1/2 -translate-y-1/2 z-50 w-12 h-12 rounded-full hidden md:flex items-center justify-center btn-press"
-          style={{ background: 'var(--ink)', color: 'var(--cream)', opacity: current === total - 1 ? 0.2 : 1, cursor: current === total - 1 ? 'not-allowed' : 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
-          <ChevronRight size={22} />
-        </button>
-
         <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
           <div key={current} className={direction === 'right' ? 'slide-in-right' : 'slide-in-left'}>
             <LookbookCard outfit={outfits[current]} index={current} total={total} />
           </div>
         </div>
-
-        <div className="flex md:hidden items-center justify-between mt-4">
-          <button onClick={goPrev} disabled={current === 0}
-            className="btn-press flex items-center gap-2 px-4 py-2 font-body text-xs tracking-[0.2em] uppercase"
-            style={{ border: '1px solid var(--ink)', color: 'var(--ink)', opacity: current === 0 ? 0.3 : 1 }}>
-            <ChevronLeft size={14} /> 이전
-          </button>
-          <div className="font-display italic text-sm" style={{ color: 'var(--muted)' }}>{current + 1} / {total}</div>
-          <button onClick={goNext} disabled={current === total - 1}
-            className="btn-press flex items-center gap-2 px-4 py-2 font-body text-xs tracking-[0.2em] uppercase"
-            style={{ background: 'var(--ink)', color: 'var(--cream)', opacity: current === total - 1 ? 0.3 : 1 }}>
-            다음 <ChevronRight size={14} />
-          </button>
-        </div>
       </div>
 
       <div className="mt-6 text-center font-body text-xs" style={{ color: 'var(--muted)' }}>
-        ← → 키보드 화살표 또는 좌우 스와이프 · 상품 클릭 시 네이버 쇼핑 페이지로 이동
+        상단 이전/다음 버튼 · ← → 키보드 또는 좌우 스와이프 · 상품 클릭 시 네이버 쇼핑 페이지로 이동
       </div>
     </div>
   );
