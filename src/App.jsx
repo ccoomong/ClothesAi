@@ -556,15 +556,14 @@ function HoverPreview({ item, slot }) {
   if (!item) return null;
   return (
     <div
-      className="hidden md:flex absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 pointer-events-none flex-col gap-1 px-3 py-2.5 bg-white"
+      className="hidden md:group-hover:flex absolute top-1/2 -translate-y-1/2 pointer-events-none flex-col gap-1 px-3 py-2.5 bg-white"
       style={{
         left: 'calc(100% + 16px)',
         minWidth: 200,
         maxWidth: 260,
         borderLeft: '2px solid var(--ink)',
         boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-        transition: 'opacity 0.2s ease',
-        zIndex: 30,
+        zIndex: 20,
       }}
     >
       <div className="font-body text-[9px] tracking-[0.25em] uppercase" style={{ color: 'var(--accent)' }}>
@@ -717,16 +716,28 @@ function LookbookGallery({ outfits }) {
 
   return (
     <div className="relative">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div className="font-body text-[10px] tracking-[0.3em] uppercase" style={{ color: 'var(--accent)' }}>
           ─── LOOKBOOK {String(current + 1).padStart(2, '0')} / {String(total).padStart(2, '0')}
         </div>
-        <div className="flex gap-2">
-          {outfits.map((_, i) => (
-            <button key={i} onClick={() => { setDirection(i > current ? 'right' : 'left'); setCurrent(i); }}
-              className="h-1 transition-all btn-press"
-              style={{ width: i === current ? 32 : 12, background: i === current ? 'var(--ink)' : 'var(--line)' }} />
-          ))}
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={goPrev} disabled={current === 0}
+            className="btn-press font-body text-xs tracking-[0.15em] uppercase flex items-center gap-1 px-3 py-1.5"
+            style={{ border: '1px solid var(--ink)', color: 'var(--ink)', opacity: current === 0 ? 0.3 : 1, cursor: current === 0 ? 'not-allowed' : 'pointer' }}>
+            <ChevronLeft size={12} /> 이전
+          </button>
+          <div className="flex gap-2">
+            {outfits.map((_, i) => (
+              <button key={i} type="button" onClick={() => { setDirection(i > current ? 'right' : 'left'); setCurrent(i); }}
+                className="h-1.5 transition-all btn-press"
+                style={{ width: i === current ? 32 : 12, background: i === current ? 'var(--ink)' : 'var(--line)' }} />
+            ))}
+          </div>
+          <button type="button" onClick={goNext} disabled={current === total - 1}
+            className="btn-press font-body text-xs tracking-[0.15em] uppercase flex items-center gap-1 px-3 py-1.5"
+            style={{ background: 'var(--ink)', color: 'var(--cream)', opacity: current === total - 1 ? 0.3 : 1, cursor: current === total - 1 ? 'not-allowed' : 'pointer' }}>
+            다음 <ChevronRight size={12} />
+          </button>
         </div>
       </div>
 

@@ -27,6 +27,8 @@ export default async function handler(req, res) {
 
   // 무료 tier에서 70b는 TPM 한도가 좁아 429 빈발 → 8b instant로 다운그레이드 (안정성 우선)
   // 결선 단계에서 paid tier 또는 다른 백본(Cerebras Llama 70B 등)으로 업그레이드 검토
+  // 무료 tier에서 70b는 TPM 한도가 좁아 429 빈발 → 8b instant로 다운그레이드 (안정성 우선)
+  // JSON mode 활성화 — 8b가 가끔 깨진 JSON 뱉는 문제 차단
   const groqPayload = {
     model: 'llama-3.1-8b-instant',
     messages: messages.map((m) => ({
@@ -35,6 +37,7 @@ export default async function handler(req, res) {
     })),
     max_tokens,
     temperature: 0.7,
+    response_format: { type: 'json_object' },
   };
 
   try {
