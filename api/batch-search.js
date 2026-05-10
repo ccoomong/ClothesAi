@@ -134,14 +134,18 @@ async function classifyImagesWithVision(imageUrls, slot) {
   const content = [
     {
       type: 'text',
-      text: `다음 ${imageUrls.length}장의 ${slotKo} 상품 사진을 각각 분류하라. 카테고리:
-- "clean": 흰색·단색 배경에 상품 하나만 단독으로 있는 누끼 컷 (사람·여러 상품 없음)
-- "model": 사람이 입거나 들고 있는 모델 컷
-- "multi": 여러 상품이 한 사진에 모인 카탈로그·세트 컷
-- "scene": 야외·실내 배경에 자연스럽게 놓인 컷
+      text: `다음 ${imageUrls.length}장의 ${slotKo} 상품 사진을 매우 엄격하게 분류하라. 의심되면 multi 또는 model.
+
+분류 기준 — 사진에 보이는 상품 수를 우선 판단:
+- "clean": **단 하나의 상품만** 흰색·단색 배경에 단독으로 있는 사진. 사람 없음.
+- "multi": **2개 이상의 상품**이 한 사진에 (같은 상품의 다른 컬러·각도 라인업도 multi, 컬러 차트, 정렬·격자·콜라주 모두 포함).
+- "model": 사람의 일부(얼굴·팔·다리·몸·손·발)가 보이는 사진.
+- "scene": 야외·실내 환경에 자연스럽게 놓인 단일 상품.
+
+핵심 규칙: 사진 안에 **상품 모양이 2개 이상 있으면 무조건 multi**. 같은 신발이 컬러만 다르게 6켤레 있어도 multi.
 
 JSON으로만 답하라. 마크다운·설명 금지.
-{"results":[{"idx":0,"type":"clean"},{"idx":1,"type":"model"}]}`,
+{"results":[{"idx":0,"type":"clean"},{"idx":1,"type":"multi"}]}`,
     },
     ...imageUrls.map((url) => ({ type: 'image_url', image_url: { url } })),
   ];
