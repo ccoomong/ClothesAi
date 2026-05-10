@@ -188,10 +188,14 @@ async function rankByVisionClassification(items, slot) {
 
   const scored = head.map((item, i) => {
     const type = verdictMap[i] || 'unknown';
-    return { ...item, _vision_score: VISION_TYPE_SCORE[type] ?? 99 };
+    return { ...item, _vision_score: VISION_TYPE_SCORE[type] ?? 99, _vision_type: type };
   });
   scored.sort((a, b) => a._vision_score - b._vision_score);
-  const cleanedHead = scored.map(({ _vision_score, ...rest }) => rest);
+
+  // 누끼 우선 통과 — clean/scene만 살리고 model/multi는 컷 (안전장치: 통과 결과 부족하면 정렬만)
+  const cleanOrScene = scored.filter((item) => item._vision_type === 'clean' || item._vision_type === 'scene');
+  const survivors = cleanOrScene.length >= 2 ? cleanOrScene : scored;
+  const cleanedHead = survivors.map(({ _vision_score, _vision_type, ...rest }) => rest);
   return [...cleanedHead, ...items.slice(5)];
 }
 
@@ -275,38 +279,51 @@ async function searchNaver(query, display, sort, slot = 'default', gender = null
   let pool = items.filter((item) => item.price_num >= floor);
   if (pool.length < 3) pool = items; // 안전장치
 
-  // 2차 필터 — 셀렉트샵(TIER1~3)만 통과 · 일반 스마트스토어 셀러 제외
-  let mallFiltered = pool.filter((item) => item._mall_tier <= 3);
-  if (mallFiltered.length < 2) mallFiltered = pool; // 안전장치 — 셀렉트샵 결과 너무 적으면 풀어줌
+  // 2차 필터 — 외부 직링만 통과 (naver.com 도메인 컷 → 보안 인증 트리거 방지)
+  let externalOnly = pool.filter((item) => item._link_type === 'external');
+  if (externalOnly.length < 2) externalOnly = pool; // 안전장치
 
-  // 3차 필터 — 슬롯 카테고리 매칭 (예: shoes 슬롯엔 신발만)
+  // 3차 필터 — 셀렉트샵(TIER1~3)만 통과 · 일반 스마트스토어 셀러 제외
+  let mallFiltered = externalOnly.filter((item) => item._mall_tier <= 3);
+  if (mallFiltered.length < 2) mallFiltered = externalOnly; // 안전장치
+
+  // 4차 필터 — 슬롯 카테고리 매칭
   let categoryFiltered = mallFiltered.filter((item) => item._matches_slot);
   if (categoryFiltered.length < 2) categoryFiltered = mallFiltered; // 안전장치
 
-  // 4차 필터 — 성별 위반 제거
+  // 5차 필터 — 성별 위반 제거
   let genderFiltered = categoryFiltered.filter((item) => !item._violates_gender);
   if (genderFiltered.length < 2) genderFiltered = categoryFiltered; // 안전장치
 
   const final = genderFiltered;
   const linkPriority = { smartstore: 1, external: 2, brand: 3, shopping: 4, unknown: 5 };
 
+  const isMusinsa = (m) => {
+    const u = (m || '').toUpperCase();
+    return u.includes('무신사') || u.includes('MUSINSA');
+  };
+
   final.sort((a, b) => {
     // 0순위: 이미지 URL 있는 항목 우선 (없으면 화면에서 깨짐)
     const aHasImg = !!(a.image_url && a.image_url.startsWith('http'));
     const bHasImg = !!(b.image_url && b.image_url.startsWith('http'));
     if (aHasImg !== bHasImg) return aHasImg ? -1 : 1;
-    // 1순위: 셀렉트샵 CDN 이미지 우선 (누끼 비중 매우 높음)
+    // 1순위: 무신사 절대 우선 (사용자 요청 80%+ 노출)
+    const aMs = isMusinsa(a.mall);
+    const bMs = isMusinsa(b.mall);
+    if (aMs !== bMs) return aMs ? -1 : 1;
+    // 2순위: 셀렉트샵 CDN 이미지 우선
     if (a._is_clean_cdn !== b._is_clean_cdn) return a._is_clean_cdn ? -1 : 1;
-    // 2순위: 멀티컷/세트 상품 강력 후순위
+    // 3순위: 멀티컷/세트 상품 강력 후순위
     if (a._has_multi_keyword !== b._has_multi_keyword) return a._has_multi_keyword ? 1 : -1;
-    // 3순위: 몰 티어 (낮을수록 누끼 비중 높음)
+    // 4순위: 몰 티어 (낮을수록 누끼 비중 높음)
     if (a._mall_tier !== b._mall_tier) return a._mall_tier - b._mall_tier;
-    // 4순위: 모델/착용샷 키워드 없는 거 우선
+    // 5순위: 모델/착용샷 키워드 없는 거 우선
     if (a._has_model_keyword !== b._has_model_keyword) return a._has_model_keyword ? 1 : -1;
-    // 5순위: 직링 종류
+    // 6순위: 직링 종류
     const lp = (linkPriority[a._link_type] || 99) - (linkPriority[b._link_type] || 99);
     if (lp !== 0) return lp;
-    // 6순위: 가격 낮은 순
+    // 7순위: 가격 낮은 순
     return (a.price_num || 0) - (b.price_num || 0);
   });
 
