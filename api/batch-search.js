@@ -275,11 +275,15 @@ async function searchNaver(query, display, sort, slot = 'default', gender = null
   let pool = items.filter((item) => item.price_num >= floor);
   if (pool.length < 3) pool = items; // 안전장치
 
-  // 2차 필터 — 슬롯 카테고리 매칭 (예: shoes 슬롯엔 신발만)
-  let categoryFiltered = pool.filter((item) => item._matches_slot);
-  if (categoryFiltered.length < 2) categoryFiltered = pool; // 안전장치
+  // 2차 필터 — 셀렉트샵(TIER1~3)만 통과 · 일반 스마트스토어 셀러 제외
+  let mallFiltered = pool.filter((item) => item._mall_tier <= 3);
+  if (mallFiltered.length < 2) mallFiltered = pool; // 안전장치 — 셀렉트샵 결과 너무 적으면 풀어줌
 
-  // 3차 필터 — 성별 위반 제거
+  // 3차 필터 — 슬롯 카테고리 매칭 (예: shoes 슬롯엔 신발만)
+  let categoryFiltered = mallFiltered.filter((item) => item._matches_slot);
+  if (categoryFiltered.length < 2) categoryFiltered = mallFiltered; // 안전장치
+
+  // 4차 필터 — 성별 위반 제거
   let genderFiltered = categoryFiltered.filter((item) => !item._violates_gender);
   if (genderFiltered.length < 2) genderFiltered = categoryFiltered; // 안전장치
 
