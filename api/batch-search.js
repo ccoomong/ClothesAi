@@ -230,7 +230,6 @@ async function searchNaver(query, display, sort, slot = 'default', gender = null
   if (!data.items || data.items.length === 0) {
     const tokens = query.split(/\s+/).filter(Boolean);
     if (tokens.length > 2) {
-      // 마지막 형용사/색상 토큰 제거
       const shorterQuery = tokens.slice(0, -1).join(' ');
       data = await callNaverApi(shorterQuery, display, sort);
       usedQuery = shorterQuery;
@@ -238,12 +237,31 @@ async function searchNaver(query, display, sort, slot = 'default', gender = null
   }
 
   if ((!data.items || data.items.length === 0) && SLOT_CATEGORIES[slot]) {
-    // 슬롯 일반 카테고리어로 폴백 (예: hat → "남성 모자")
     const genderToken = gender || '';
     const slotToken = SLOT_CATEGORIES[slot][0];
     const fallbackQuery = `${genderToken} ${slotToken}`.trim();
     data = await callNaverApi(fallbackQuery, display, sort);
     usedQuery = fallbackQuery;
+  }
+
+  // 무신사 booster — 결과 안에 무신사가 3개 미만이면 "검색어 + 무신사"로 추가 검색
+  const musinsaInPrimary = (data.items || []).filter((it) => /무신사|musinsa/i.test(it.mallName || ''));
+  if (musinsaInPrimary.length < 3) {
+    try {
+      const boosterData = await callNaverApi(`${usedQuery} 무신사`, display, sort);
+      const merged = [...(data.items || []), ...(boosterData.items || [])];
+      const seen = new Set();
+      const unique = [];
+      for (const it of merged) {
+        if (!seen.has(it.link)) {
+          seen.add(it.link);
+          unique.push(it);
+        }
+      }
+      data.items = unique.slice(0, 30);
+    } catch {
+      // booster 실패는 silent — 1차 결과 그대로 사용
+    }
   }
 
   let items = (data.items || []).map((item) => {
