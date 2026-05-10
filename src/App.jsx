@@ -98,7 +98,7 @@ const callAI = async (profile, styleQuery) => {
 
 ## 사용자 프로필
 - 성별: ${profile.gender}
-- 나이대: ${profile.age}
+- 나이: ${profile.age}세
 - 키: ${profile.height}cm
 - 체형: ${profile.bodyType}
 - 예산: ${profile.budget}만원
@@ -384,15 +384,25 @@ function ProfileForm({ profile, setProfile, onNext, onBack }) {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
         <Field label="성별"><ChipGroup value={profile.gender} options={['남성', '여성']} onChange={(v) => update('gender', v)} /></Field>
-        <Field label="나이대"><ChipGroup value={profile.age} options={['10대 후반', '20대 초반', '20대 중후반', '30대']} onChange={(v) => update('age', v)} /></Field>
+        <Field label="나이" sub="만 나이">
+          <input type="text" inputMode="numeric" pattern="[0-9]*" value={profile.age}
+            onChange={(e) => update('age', e.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
+            placeholder="22" className="w-full font-display text-4xl bg-transparent border-b-2 pb-2"
+            style={{ borderColor: 'var(--ink)', color: 'var(--ink)' }} />
+        </Field>
         <Field label="키" sub="cm">
           <input type="text" inputMode="numeric" pattern="[0-9]*" value={profile.height}
-            onChange={(e) => update('height', e.target.value.replace(/[^0-9]/g, ''))}
+            onChange={(e) => update('height', e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
             placeholder="173" className="w-full font-display text-4xl bg-transparent border-b-2 pb-2"
             style={{ borderColor: 'var(--ink)', color: 'var(--ink)' }} />
         </Field>
         <Field label="체형"><ChipGroup value={profile.bodyType} options={['마른편', '보통', '근육질', '통통']} onChange={(v) => update('bodyType', v)} /></Field>
-        <Field label="예산" sub="만원"><ChipGroup value={profile.budget} options={['10', '15', '20', '30', '50+']} onChange={(v) => update('budget', v)} /></Field>
+        <Field label="예산" sub="만원">
+          <input type="text" inputMode="numeric" pattern="[0-9]*" value={profile.budget}
+            onChange={(e) => update('budget', e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
+            placeholder="20" className="w-full font-display text-4xl bg-transparent border-b-2 pb-2"
+            style={{ borderColor: 'var(--ink)', color: 'var(--ink)' }} />
+        </Field>
         <Field label="싫어하는 스타일" sub="선택">
           <input type="text" value={profile.dislikes} onChange={(e) => update('dislikes', e.target.value)}
             placeholder="과한 로고, 너무 타이트한 옷..." className="w-full font-body text-base bg-transparent border-b pb-2"

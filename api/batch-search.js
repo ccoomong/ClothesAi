@@ -34,8 +34,20 @@ const WOMEN_KEYWORDS = ['여성', '여자', 'women', 'womens', 'womans', 'female
 const MEN_KEYWORDS = ['남성', '남자', 'mens', 'mans', 'male', '맨즈', '보이즈', 'boys', '아빠', '신랑', '아저씨'];
 
 // 누끼 비중에 따라 몰을 티어로 분류 — 낮은 티어가 우선 노출됨
-const TIER1_MALLS = ['무신사', 'MUSINSA', '29CM', '29cm', 'W컨셉', 'WCONCEPT', 'wconcept', 'EQL', 'OCO', '하이버'];
-const TIER2_MALLS = ['스타일쉐어', 'LOOKPIN', '룩핀'];
+const TIER1_MALLS = [
+  '무신사', 'MUSINSA',
+  '29CM', '29cm',
+  'W컨셉', 'WCONCEPT', 'wconcept',
+  'EQL',
+  'OCO',
+  '하이버',
+  '4910',          // 무신사 산하 셀렉트샵
+  '무탠다드', 'MUTNDARD',
+  '어글리쉽', 'UGLYSHIP',
+  '커버낫', 'COVERNAT',
+  '디스이즈네버댓', 'thisisneverthat',
+];
+const TIER2_MALLS = ['스타일쉐어', 'LOOKPIN', '룩핀', 'SSF', 'LF몰', '한섬', '코오롱몰'];
 const TIER3_MALLS = ['ABLY', '에이블리', 'ZIGZAG', '지그재그', 'BRANDI', '브랜디'];
 
 function getMallTier(mallName) {
@@ -294,7 +306,11 @@ async function searchNaver(query, display, sort, slot = 'default', gender = null
     return (a.price_num || 0) - (b.price_num || 0);
   });
 
-  return final.map(({ _link_type, _mall_tier, _has_model_keyword, _has_multi_keyword, _is_clean_cdn, _matches_slot, _violates_gender, ...rest }) => rest);
+  // 이미지 URL 없는 항목은 화면에서 깨지므로 통째 제거 (안전장치: 모두 빠지면 원본 그대로)
+  const withImage = final.filter((item) => item.image_url && /^https?:\/\//.test(item.image_url));
+  const ready = withImage.length > 0 ? withImage : final;
+
+  return ready.map(({ _link_type, _mall_tier, _has_model_keyword, _has_multi_keyword, _is_clean_cdn, _matches_slot, _violates_gender, ...rest }) => rest);
 }
 
 function cleanProductUrl(url) {
