@@ -73,10 +73,16 @@ input:focus, textarea:focus, select:focus { outline: none; }
 `;
 
 const getImageSources = (item) => {
+  const sources = [];
   if (item.image_url && /^https?:\/\//.test(item.image_url)) {
-    return [item.image_url];
+    sources.push(item.image_url);
   }
-  return [];
+  if (Array.isArray(item._alt_images)) {
+    item._alt_images.forEach((url) => {
+      if (url && /^https?:\/\//.test(url)) sources.push(url);
+    });
+  }
+  return sources;
 };
 
 const SAMPLE_PROMPTS = [
@@ -227,14 +233,20 @@ const callAI = async (profile, styleQuery) => {
       const item = outfit.items[slot];
       if (!item) return;
       const candidates = slotMap[`${oi}-${slot}`] || [];
-      // 이미지 URL 있는 후보만 추려내고, outfit 인덱스에 따라 다른 후보 픽 (룩북별 다양성 확보)
       const validCandidates = candidates.filter((c) => c.image_url && /^https?:\/\//.test(c.image_url));
       const pool = validCandidates.length > 0 ? validCandidates : candidates;
       const idx = pool.length > 0 ? oi % pool.length : 0;
       const picked = pool[idx];
+      // 이미지 로드 실패 시 cascade할 backup URLs (같은 슬롯의 다른 후보 4개까지)
+      const altImages = pool
+        .filter((_, i) => i !== idx)
+        .slice(0, 4)
+        .map((c) => c.image_url)
+        .filter((u) => u && /^https?:\/\//.test(u));
       if (picked) {
         item.name = picked.name;
         item.image_url = picked.image_url;
+        item._alt_images = altImages;
         item.product_url = picked.product_url;
         item.price = picked.price;
         item.price_num = picked.price_num;
