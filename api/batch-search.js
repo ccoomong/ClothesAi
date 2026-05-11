@@ -107,9 +107,11 @@ export default async function handler(req, res) {
       try {
         const slotType = (q.slot || '').split('-').pop() || 'default';
         const items = await searchNaver(q.keyword, 20, q.sort || 'sim', slotType, gender);
-        // Vision 분류로 단독컷 우선 재정렬 (실패 시 원본 정렬 그대로)
         const ranked = await rankByVisionClassification(items, slotType);
-        return { slot: q.slot, keyword: q.keyword, items: ranked.slice(0, q.display || 5) };
+        // 상위 후보 image URL 사전 검증 — 죽은 URL을 frontend에 보내지 않음
+        const verified = await verifyTopImages(ranked, q.display || 5);
+        const pool = verified.length > 0 ? verified : ranked;
+        return { slot: q.slot, keyword: q.keyword, items: pool.slice(0, q.display || 5) };
       } catch (e) {
         return { slot: q.slot, keyword: q.keyword, items: [], error: e.message };
       }
@@ -384,6 +386,30 @@ function isTrustedFallbackImage(url) {
   } catch {
     return false;
   }
+}
+
+// 이미지 URL이 진짜 살아있는지 HEAD 검증 (timeout 2초)
+async function isImageAlive(url) {
+  if (!url) return false;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000);
+    const res = await fetch(url, { method: 'HEAD', signal: controller.signal });
+    clearTimeout(timeout);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+// 결과의 상위 N개만 HEAD 검증, 죽은 URL은 image_url 비움
+async function verifyTopImages(items, topN = 5) {
+  const head = items.slice(0, topN);
+  const verdicts = await Promise.all(head.map((it) => isImageAlive(it.image_url)));
+  for (let i = 0; i < head.length; i++) {
+    if (!verdicts[i]) head[i].image_url = '';
+  }
+  return [...head, ...items.slice(topN)].filter((it) => it.image_url);
 }
 
 function cleanProductUrl(url) {

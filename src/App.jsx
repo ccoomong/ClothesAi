@@ -541,27 +541,16 @@ function ProductImage({ item, slot, alt, className, style }) {
   const src = sources[sourceIdx];
 
   if (!src) {
+    // 텍스트·테두리 없이 룩북 분위기에 녹는 빈 박스 (사용자 인식 최소화)
     return (
       <div
         className={className}
         style={{
           ...style,
-          background: 'rgba(255,255,255,0.5)',
-          border: '1px dashed var(--line)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
+          background: 'transparent',
           position: 'relative',
         }}
-      >
-        <div className="font-display italic" style={{ color: 'var(--muted)', fontSize: '1.1em', fontWeight: 400 }}>
-          {ITEM_LABELS[slot]?.ko || ''}
-        </div>
-        <div className="font-body text-[8px] tracking-[0.25em] uppercase mt-1" style={{ color: 'var(--muted)' }}>
-          {ITEM_LABELS[slot]?.en || ''}
-        </div>
-      </div>
+      />
     );
   }
 
