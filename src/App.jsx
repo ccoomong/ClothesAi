@@ -15,15 +15,15 @@ const FONT_LINK = `
 @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800;900&display=swap');
 
 :root {
-  --cream: #F4EFE6;
-  --cream-deep: #ECE5D6;
-  --paper: #FAF7F0;
-  --ink: #1A1A1A;
-  --ink-soft: #2A2A2A;
-  --accent: #8B2C2C;
-  --muted: #8a847a;
-  --line: #d8d0bf;
-  --lookbook-bg: linear-gradient(135deg, #f5f0e6 0%, #e8dfd0 50%, #f5f0e6 100%);
+  --cream: #FFFFFF;
+  --cream-deep: #EFF2F7;
+  --paper: #FAFBFC;
+  --ink: #0F1F4A;
+  --ink-soft: #1B2D5C;
+  --accent: #2C4A8B;
+  --muted: #7A8499;
+  --line: #DDE4ED;
+  --lookbook-bg: linear-gradient(135deg, #FFFFFF 0%, #EFF2F7 50%, #FFFFFF 100%);
 }
 
 @keyframes fadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
@@ -51,22 +51,22 @@ const FONT_LINK = `
 .grain { background-image: radial-gradient(rgba(0,0,0,0.018) 1px, transparent 1px); background-size: 3px 3px; }
 
 .lookbook-paper {
-  background-image: 
-    radial-gradient(ellipse at top left, rgba(255,255,255,0.6) 0%, transparent 50%),
-    radial-gradient(ellipse at bottom right, rgba(0,0,0,0.04) 0%, transparent 50%),
-    linear-gradient(135deg, #f5f0e6 0%, #ebe2d2 100%);
+  background-image:
+    radial-gradient(ellipse at top left, rgba(255,255,255,0.9) 0%, transparent 50%),
+    radial-gradient(ellipse at bottom right, rgba(15,31,74,0.05) 0%, transparent 50%),
+    linear-gradient(135deg, #FFFFFF 0%, #EFF2F7 100%);
 }
 
-.product-shadow { filter: drop-shadow(0 8px 16px rgba(0,0,0,0.12)) drop-shadow(0 2px 4px rgba(0,0,0,0.06)); }
-.price-card-shadow { box-shadow: 0 2px 12px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04); }
+.product-shadow { filter: drop-shadow(0 8px 16px rgba(15,31,74,0.12)) drop-shadow(0 2px 4px rgba(15,31,74,0.06)); }
+.price-card-shadow { box-shadow: 0 2px 12px rgba(15,31,74,0.08), 0 0 0 1px rgba(15,31,74,0.04); }
 
 .image-shimmer {
-  background: linear-gradient(90deg, #ede5d5 0%, #f5efe2 50%, #ede5d5 100%);
+  background: linear-gradient(90deg, #EFF2F7 0%, #F8F9FB 50%, #EFF2F7 100%);
   background-size: 200% 100%;
   animation: shimmer 1.8s ease-in-out infinite;
 }
 
-input::placeholder, textarea::placeholder { color: #b3a994; }
+input::placeholder, textarea::placeholder { color: #A6B0C2; }
 input:focus, textarea:focus, select:focus { outline: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
