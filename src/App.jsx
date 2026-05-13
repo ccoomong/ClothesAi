@@ -487,6 +487,7 @@ function ChatView() {
   const [loading, setLoading] = useState(false);
   const [loadingPhase, setLoadingPhase] = useState(0);
   const scrollRef = useRef(null);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     if (!loading) { setLoadingPhase(0); return; }
@@ -498,16 +499,22 @@ function ChatView() {
 
   useEffect(() => {
     if (!scrollRef.current) return;
-    // 마지막 룩북이 있으면 그 시작 지점 위(AI 인트로 멘트가 보이게)로 부드럽게 스크롤
-    const lookbooks = scrollRef.current.querySelectorAll('[data-lookbook]');
-    const last = lookbooks[lookbooks.length - 1];
-    if (last) {
-      const target = Math.max(0, last.offsetTop - 80);
-      scrollRef.current.scrollTo({ top: target, behavior: 'smooth' });
-    } else {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const el = scrollRef.current;
+    // 사용자가 끝 근처에 있을 때만 자동 스크롤 (카톡 패턴) — 위로 올려서 옛 룩북 보고 있으면 방해 안 함
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 240;
+    if (nearBottom) {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
     }
   }, [messages, loading]);
+
+  // 자유 입력이 필요한 단계(나이·키·체형·예산·스타일)에선 자동으로 포커스
+  useEffect(() => {
+    if (loading) return;
+    if (stage >= 1 && inputRef.current) {
+      const t = setTimeout(() => inputRef.current?.focus(), 120);
+      return () => clearTimeout(t);
+    }
+  }, [stage, loading]);
 
   const appendAi = (...items) => setMessages((prev) => [...prev, ...items.map((it) => ({ role: 'ai', ...it }))]);
   const appendUser = (text) => setMessages((prev) => [
@@ -643,7 +650,7 @@ function ChatView() {
   })();
 
   return (
-    <section className="max-w-2xl mx-auto fade-in flex flex-col" style={{ height: '100dvh', overflow: 'hidden' }}>
+    <section className="max-w-2xl md:max-w-5xl mx-auto fade-in flex flex-col" style={{ height: '100dvh', overflow: 'hidden' }}>
       <header className="flex items-center gap-3 px-4 py-3 flex-shrink-0" style={{ background: '#FFFFFF', borderBottom: '1px solid var(--line)' }}>
         <div className="flex items-center justify-center" style={{ width: 36, height: 36, borderRadius: 18, background: 'var(--ink)' }}>
           <Sparkles size={15} style={{ color: '#FFFFFF' }} />
@@ -731,6 +738,7 @@ function ChatView() {
       <div className="flex-shrink-0" style={{ background: '#FFFFFF', borderTop: '1px solid var(--line)' }}>
         <div className="px-4 py-3 flex items-end gap-2" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
           <textarea
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKey}
