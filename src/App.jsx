@@ -16,14 +16,14 @@ const FONT_LINK = `
 
 :root {
   --cream: #FFFFFF;
-  --cream-deep: #EFF2F7;
-  --paper: #FAFBFC;
+  --cream-deep: #F5F7FB;
+  --paper: #FFFFFF;
   --ink: #0F1F4A;
   --ink-soft: #1B2D5C;
   --accent: #2C4A8B;
   --muted: #7A8499;
-  --line: #DDE4ED;
-  --lookbook-bg: linear-gradient(135deg, #FFFFFF 0%, #EFF2F7 50%, #FFFFFF 100%);
+  --line: #E5EAF2;
+  --lookbook-bg: linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 50%, #FFFFFF 100%);
 }
 
 @keyframes fadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
@@ -52,9 +52,8 @@ const FONT_LINK = `
 
 .lookbook-paper {
   background-image:
-    radial-gradient(ellipse at top left, rgba(255,255,255,0.9) 0%, transparent 50%),
-    radial-gradient(ellipse at bottom right, rgba(15,31,74,0.05) 0%, transparent 50%),
-    linear-gradient(135deg, #FFFFFF 0%, #EFF2F7 100%);
+    radial-gradient(ellipse at bottom right, rgba(15,31,74,0.02) 0%, transparent 60%),
+    linear-gradient(135deg, #FFFFFF 0%, #FAFBFD 100%);
 }
 
 .product-shadow { filter: drop-shadow(0 8px 16px rgba(15,31,74,0.12)) drop-shadow(0 2px 4px rgba(15,31,74,0.06)); }
