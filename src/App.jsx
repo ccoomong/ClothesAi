@@ -618,8 +618,8 @@ function ChatView() {
   })();
 
   return (
-    <section className="max-w-2xl mx-auto fade-in flex flex-col" style={{ minHeight: '100vh' }}>
-      <header className="sticky top-0 z-20 flex items-center gap-3 px-4 py-3" style={{ background: '#FFFFFF', borderBottom: '1px solid var(--line)' }}>
+    <section className="max-w-2xl mx-auto fade-in flex flex-col" style={{ height: '100dvh', overflow: 'hidden' }}>
+      <header className="flex items-center gap-3 px-4 py-3 flex-shrink-0" style={{ background: '#FFFFFF', borderBottom: '1px solid var(--line)' }}>
         <div className="flex items-center justify-center" style={{ width: 36, height: 36, borderRadius: 18, background: 'var(--ink)' }}>
           <Sparkles size={15} style={{ color: '#FFFFFF' }} />
         </div>
@@ -632,7 +632,7 @@ function ChatView() {
         </button>
       </header>
 
-      <div ref={scrollRef} className="flex-1 px-4 py-6 space-y-4 overflow-y-auto" style={{ paddingBottom: 110 }}>
+      <div ref={scrollRef} className="flex-1 px-4 py-6 space-y-4 overflow-y-auto" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}>
         {messages.map((msg, i) => {
           if (msg.type === 'text') {
             return (
@@ -703,8 +703,8 @@ function ChatView() {
         )}
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0" style={{ background: '#FFFFFF', borderTop: '1px solid var(--line)' }}>
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-end gap-2">
+      <div className="flex-shrink-0" style={{ background: '#FFFFFF', borderTop: '1px solid var(--line)' }}>
+        <div className="px-4 py-3 flex items-end gap-2" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -712,7 +712,7 @@ function ChatView() {
             placeholder={placeholder}
             rows={1}
             disabled={loading}
-            className="flex-1 font-body text-sm"
+            className="flex-1 font-body"
             style={{
               padding: '12px 16px',
               border: '1px solid var(--line)',
@@ -723,6 +723,7 @@ function ChatView() {
               background: '#FFFFFF',
               maxHeight: 100,
               lineHeight: 1.4,
+              fontSize: 16,
             }}
           />
           <button
