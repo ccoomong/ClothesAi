@@ -33,6 +33,18 @@ const FONT_LINK = `
 @keyframes slideInRight { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes slideInLeft { from { opacity: 0; transform: translateX(-40px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+@keyframes dotTyping {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
+  30% { transform: translateY(-3px); opacity: 1; }
+}
+.dot-typing {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ink);
+  display: inline-block;
+  animation: dotTyping 1.2s infinite;
+}
 
 .font-display { font-family: 'Fraunces', 'Noto Serif KR', serif; font-feature-settings: "ss01", "ss02"; }
 .font-serif-kr { font-family: 'Noto Serif KR', 'Fraunces', serif; }
@@ -324,7 +336,7 @@ function ChipGroup({ value, options, onChange }) {
 }
 
 function Header({ step }) {
-  const order = ['intro', 'profile', 'style', 'result'];
+  const order = ['intro', 'profile', 'chat'];
   return (
     <header className="w-full border-b" style={{ borderColor: 'var(--line)' }}>
       <div className="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
@@ -451,7 +463,198 @@ function ProfileForm({ profile, setProfile, onNext, onBack }) {
   );
 }
 
-function StyleInput({ styleQuery, setStyleQuery, onSubmit, onBack, loading, error }) {
+function ChatView({ profile, onBack }) {
+  const [messages, setMessages] = useState([
+    { role: 'ai', type: 'text', content: '안녕하세요, 클로예요.\n오늘 어떤 분위기로 가고 싶으세요?' },
+    { role: 'ai', type: 'quickReplies', content: SAMPLE_PROMPTS },
+  ]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const scrollRef = useRef(null);
+  const turnIndexRef = useRef(0);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, loading]);
+
+  const send = async (text) => {
+    const userText = (text || input).trim();
+    if (!userText || loading) return;
+
+    setMessages((prev) => [
+      ...prev.filter((m) => m.type !== 'quickReplies'),
+      { role: 'user', type: 'text', content: userText },
+    ]);
+    setInput('');
+    setLoading(true);
+    turnIndexRef.current += 1;
+    const isFirst = turnIndexRef.current === 1;
+
+    try {
+      const data = await callAI(profile, userText);
+      const intro = isFirst
+        ? `'${data.mood_label}' 무드로 골라봤어요. 마음에 드는 한 벌이 있길!`
+        : `이번엔 '${data.mood_label}'로 다시 그려봤어요.`;
+      setMessages((prev) => [
+        ...prev,
+        { role: 'ai', type: 'text', content: intro },
+        { role: 'ai', type: 'lookbook', content: data },
+        { role: 'ai', type: 'text', content: '상품 카드를 누르면 구매 페이지로 가요. 다른 무드나 변형도 자유롭게 말해주세요.' },
+      ]);
+    } catch (e) {
+      console.error(e);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'ai', type: 'error', content: `이번엔 잘 안 됐어요. 잠시 후 다시 시도해 주세요. (${e.message})` },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleKey = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
+  };
+
+  return (
+    <section className="max-w-2xl mx-auto fade-in flex flex-col" style={{ minHeight: '100vh' }}>
+      <header className="sticky top-0 z-20 flex items-center gap-3 px-4 py-3" style={{ background: '#FFFFFF', borderBottom: '1px solid var(--line)' }}>
+        <button onClick={onBack} disabled={loading} className="btn-press p-1.5" style={{ color: 'var(--muted)' }} aria-label="뒤로">
+          <ArrowLeft size={18} />
+        </button>
+        <div className="flex items-center gap-2.5 flex-1">
+          <div className="flex items-center justify-center" style={{ width: 36, height: 36, borderRadius: 18, background: 'var(--ink)' }}>
+            <Sparkles size={15} style={{ color: '#FFFFFF' }} />
+          </div>
+          <div className="leading-tight">
+            <div className="font-display italic text-base" style={{ color: 'var(--ink)', fontWeight: 500 }}>Clo</div>
+            <div className="font-body text-[10px] tracking-[0.15em] uppercase" style={{ color: 'var(--muted)' }}>ClothesAi · Assistant</div>
+          </div>
+        </div>
+      </header>
+
+      <div ref={scrollRef} className="flex-1 px-4 py-6 space-y-4 overflow-y-auto" style={{ paddingBottom: 110 }}>
+        {messages.map((msg, i) => {
+          if (msg.type === 'text') {
+            return (
+              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} fade-in`}>
+                <div
+                  className="font-body text-sm leading-relaxed whitespace-pre-line"
+                  style={{
+                    padding: '12px 16px',
+                    maxWidth: '78%',
+                    background: msg.role === 'user' ? 'var(--ink)' : '#F4F6FA',
+                    color: msg.role === 'user' ? '#FFFFFF' : 'var(--ink)',
+                    borderRadius: 18,
+                    borderTopRightRadius: msg.role === 'user' ? 4 : 18,
+                    borderTopLeftRadius: msg.role === 'ai' ? 4 : 18,
+                    boxShadow: '0 1px 2px rgba(15,31,74,0.04)',
+                  }}
+                >
+                  {msg.content}
+                </div>
+              </div>
+            );
+          }
+          if (msg.type === 'quickReplies') {
+            return (
+              <div key={i} className="pt-1 space-y-2 fade-in">
+                <div className="font-body text-[10px] tracking-[0.2em] uppercase pl-1" style={{ color: 'var(--muted)' }}>이렇게 표현해 보세요</div>
+                <div className="flex flex-wrap gap-2">
+                  {msg.content.map((p, idx) => (
+                    <button key={idx} type="button" onClick={() => send(p)}
+                      className="btn-press font-body text-xs"
+                      style={{ padding: '8px 14px', borderRadius: 999, border: '1px solid var(--line)', background: '#FFFFFF', color: 'var(--ink)' }}>
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          }
+          if (msg.type === 'lookbook') {
+            return (
+              <div key={i} className="fade-in" style={{ padding: '4px 0' }}>
+                <LookbookGallery outfits={msg.content.outfits} />
+                <StyleGuide guide={msg.content.style_guide} />
+              </div>
+            );
+          }
+          if (msg.type === 'error') {
+            return (
+              <div key={i} className="flex justify-start fade-in">
+                <div style={{ padding: 12, borderRadius: 18, borderTopLeftRadius: 4, background: '#FEF2F2', border: '1px solid #FECACA', maxWidth: '78%' }}>
+                  <div className="font-body text-xs" style={{ color: '#991B1B' }}>{msg.content}</div>
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })}
+
+        {loading && (
+          <div className="flex justify-start fade-in">
+            <div className="flex items-center gap-2.5" style={{ padding: '12px 16px', borderRadius: 18, borderTopLeftRadius: 4, background: '#F4F6FA' }}>
+              <div className="flex gap-1 items-end" style={{ height: 8 }}>
+                <span className="dot-typing"></span>
+                <span className="dot-typing" style={{ animationDelay: '0.15s' }}></span>
+                <span className="dot-typing" style={{ animationDelay: '0.3s' }}></span>
+              </div>
+              <span className="font-body text-xs" style={{ color: 'var(--muted)' }}>Clo가 입력 중</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="fixed bottom-0 left-0 right-0" style={{ background: '#FFFFFF', borderTop: '1px solid var(--line)' }}>
+        <div className="max-w-2xl mx-auto px-4 py-3 flex items-end gap-2">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder={loading ? 'Clo가 답하는 중…' : '원하는 스타일이나 변경 요청을 적어주세요'}
+            rows={1}
+            disabled={loading}
+            className="flex-1 font-body text-sm"
+            style={{
+              padding: '12px 16px',
+              border: '1px solid var(--line)',
+              borderRadius: 22,
+              resize: 'none',
+              outline: 'none',
+              color: 'var(--ink)',
+              background: '#FFFFFF',
+              maxHeight: 100,
+              lineHeight: 1.4,
+            }}
+          />
+          <button
+            onClick={() => send()}
+            disabled={!input.trim() || loading}
+            className="btn-press flex items-center justify-center"
+            style={{
+              width: 44, height: 44, borderRadius: 22,
+              background: 'var(--ink)', color: '#FFFFFF',
+              opacity: !input.trim() || loading ? 0.25 : 1,
+              cursor: !input.trim() || loading ? 'not-allowed' : 'pointer',
+              flexShrink: 0,
+            }}
+            aria-label="보내기"
+          >
+            <ArrowRight size={16} />
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function _LegacyStyleInputUnused({ styleQuery, setStyleQuery, onSubmit, onBack, loading, error }) {
   const isValid = styleQuery.trim().length > 5;
   const messages = [
     { role: 'ai', content: '안녕하세요, 클로예요.\n오늘 어떤 분위기로 가고 싶으세요?' },
@@ -1013,9 +1216,6 @@ function Result({ result, query, onRestart }) {
 export default function App() {
   const [step, setStep] = useState('intro');
   const [profile, setProfile] = useState({ gender: '', age: '', height: '', bodyType: '', budget: '', dislikes: '' });
-  const [styleQuery, setStyleQuery] = useState('');
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState('');
 
   useEffect(() => {
     const styleEl = document.createElement('style');
@@ -1025,47 +1225,27 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (step !== 'chat') window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [step]);
-
-  const submitStyle = async () => {
-    setError('');
-    setStep('loading');
-    try {
-      const data = await callAI(profile, styleQuery);
-      setResult(data);
-      setStep('result');
-    } catch (e) {
-      console.error(e);
-      setError(`코디 생성에 실패했습니다. 다시 시도해주세요. (${e.message})`);
-      setStep('style');
-    }
-  };
-
-  const restart = () => {
-    setStep('style');
-    setResult(null);
-    setStyleQuery('');
-  };
 
   return (
     <div className="font-body min-h-screen" style={{ background: 'var(--cream)', color: 'var(--ink)' }}>
-      <Header step={step === 'loading' ? 'style' : step} />
+      {step !== 'chat' && <Header step={step} />}
       {step === 'intro' && <Intro onStart={() => setStep('profile')} />}
-      {step === 'profile' && <ProfileForm profile={profile} setProfile={setProfile} onNext={() => setStep('style')} onBack={() => setStep('intro')} />}
-      {step === 'style' && <StyleInput styleQuery={styleQuery} setStyleQuery={setStyleQuery} onSubmit={submitStyle} onBack={() => setStep('profile')} loading={false} error={error} />}
-      {step === 'loading' && <LoadingScreen />}
-      {step === 'result' && result && <Result result={result} query={styleQuery} onRestart={restart} />}
-      <footer className="border-t py-6 mt-12" style={{ borderColor: 'var(--line)' }}>
-        <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-2">
-          <div className="font-display text-sm" style={{ color: 'var(--muted)' }}>
-            <span style={{ fontStyle: 'italic' }}>Clothes</span>Ai · MVP Demo v7
+      {step === 'profile' && <ProfileForm profile={profile} setProfile={setProfile} onNext={() => setStep('chat')} onBack={() => setStep('intro')} />}
+      {step === 'chat' && <ChatView profile={profile} onBack={() => setStep('profile')} />}
+      {step !== 'chat' && (
+        <footer className="border-t py-6 mt-12" style={{ borderColor: 'var(--line)' }}>
+          <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-2">
+            <div className="font-display text-sm" style={{ color: 'var(--muted)' }}>
+              <span style={{ fontStyle: 'italic' }}>Clothes</span>Ai · MVP Demo v7
+            </div>
+            <div className="font-body text-[10px] tracking-[0.25em] uppercase" style={{ color: 'var(--muted)' }}>
+              Chat Mode · 2026
+            </div>
           </div>
-          <div className="font-body text-[10px] tracking-[0.25em] uppercase" style={{ color: 'var(--muted)' }}>
-            Vercel Ready · 2026
-          </div>
-        </div>
-      </footer>
+        </footer>
+      )}
     </div>
   );
 }
