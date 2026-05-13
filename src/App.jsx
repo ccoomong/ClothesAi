@@ -16,14 +16,14 @@ const FONT_LINK = `
 
 :root {
   --cream: #FFFFFF;
-  --cream-deep: #F5F7FB;
+  --cream-deep: #FFFFFF;
   --paper: #FFFFFF;
   --ink: #0F1F4A;
   --ink-soft: #1B2D5C;
   --accent: #2C4A8B;
-  --muted: #7A8499;
-  --line: #E5EAF2;
-  --lookbook-bg: linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 50%, #FFFFFF 100%);
+  --muted: #8B95A6;
+  --line: #EEF1F6;
+  --lookbook-bg: #FFFFFF;
 }
 
 @keyframes fadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
@@ -48,19 +48,17 @@ const FONT_LINK = `
 .btn-press { transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
 .btn-press:active { transform: scale(0.97); }
 
-.grain { background-image: radial-gradient(rgba(0,0,0,0.018) 1px, transparent 1px); background-size: 3px 3px; }
+.grain { background: transparent; }
 
 .lookbook-paper {
-  background-image:
-    radial-gradient(ellipse at bottom right, rgba(15,31,74,0.02) 0%, transparent 60%),
-    linear-gradient(135deg, #FFFFFF 0%, #FAFBFD 100%);
+  background: #FFFFFF;
 }
 
 .product-shadow { filter: drop-shadow(0 8px 16px rgba(15,31,74,0.12)) drop-shadow(0 2px 4px rgba(15,31,74,0.06)); }
 .price-card-shadow { box-shadow: 0 2px 12px rgba(15,31,74,0.08), 0 0 0 1px rgba(15,31,74,0.04); }
 
 .image-shimmer {
-  background: linear-gradient(90deg, #EFF2F7 0%, #F8F9FB 50%, #EFF2F7 100%);
+  background: linear-gradient(90deg, #F4F6FA 0%, #FFFFFF 50%, #F4F6FA 100%);
   background-size: 200% 100%;
   animation: shimmer 1.8s ease-in-out infinite;
 }
