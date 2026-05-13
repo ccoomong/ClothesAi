@@ -453,54 +453,147 @@ function ProfileForm({ profile, setProfile, onNext, onBack }) {
 
 function StyleInput({ styleQuery, setStyleQuery, onSubmit, onBack, loading, error }) {
   const isValid = styleQuery.trim().length > 5;
+  const messages = [
+    { role: 'ai', content: '안녕하세요, 클로예요.\n오늘 어떤 분위기로 가고 싶으세요?' },
+  ];
+  if (styleQuery.trim()) {
+    messages.push({ role: 'user', content: styleQuery });
+  }
+
+  const handleKey = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && isValid && !loading) {
+      e.preventDefault();
+      onSubmit();
+    }
+  };
+
   return (
-    <section className="max-w-4xl mx-auto px-6 pt-12 pb-24 fade-in">
-      <div className="mb-10">
-        <div className="font-body text-[10px] tracking-[0.3em] uppercase mb-3" style={{ color: 'var(--accent)' }}>STEP 02 / 02</div>
-        <h2 className="font-display text-5xl md:text-6xl" style={{ fontWeight: 400, letterSpacing: '-0.03em', lineHeight: 1 }}>
-          어떤 스타일을 <span style={{ fontStyle: 'italic', fontWeight: 300 }}>찾고 있나요?</span>
-        </h2>
-        <p className="font-serif-kr mt-4 text-base" style={{ color: 'var(--muted)' }}>정확한 검색어를 몰라도 좋습니다. 평소 친구한테 말하듯 적어주세요.</p>
-      </div>
-      <div className="relative">
-        <textarea value={styleQuery} onChange={(e) => setStyleQuery(e.target.value)} rows={5}
-          placeholder='예: "내일 개강 첫날인데, 너무 꾸민 느낌은 싫고 깔끔하게 보이고 싶어."'
-          className="w-full font-serif-kr text-2xl md:text-3xl bg-transparent leading-relaxed border-b-2 pb-6"
-          style={{ borderColor: 'var(--ink)', color: 'var(--ink)', resize: 'none', lineHeight: 1.5 }} />
-        <div className="absolute bottom-2 right-0 font-body text-xs" style={{ color: 'var(--muted)' }}>{styleQuery.length}자</div>
-      </div>
-      <div className="mt-10">
-        <div className="font-body text-[10px] tracking-[0.25em] uppercase mb-3" style={{ color: 'var(--muted)' }}>이렇게 표현해보세요</div>
-        <div className="flex flex-wrap gap-2">
-          {SAMPLE_PROMPTS.map((p, i) => (
-            <button key={i} type="button" onClick={() => setStyleQuery(p)}
-              className="btn-press font-serif-kr text-sm px-4 py-2 hover:bg-black hover:text-white"
-              style={{ border: '1px solid var(--line)', background: 'transparent', color: 'var(--ink)' }}>
-              "{p}"
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="mt-8 p-4 fade-in flex gap-3 items-start" style={{ background: 'var(--cream-deep)', border: '1px dashed var(--line)' }}>
-        <Search size={14} style={{ color: 'var(--accent)', flexShrink: 0, marginTop: 3 }} />
-        <p className="font-serif-kr text-sm leading-relaxed" style={{ color: 'var(--ink-soft)' }}>
-          AI가 표현을 해석한 뒤 네이버 쇼핑에서 실제 판매 중인 상품을 실시간으로 가져옵니다. 약 <b>5~10초</b>가 걸립니다.
-        </p>
-      </div>
-      {error && (
-        <div className="mt-6 p-4 fade-in" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
-          <div className="font-body text-sm" style={{ color: '#991b1b' }}>{error}</div>
-        </div>
-      )}
-      <div className="flex items-center justify-between mt-16 pt-8 border-t" style={{ borderColor: 'var(--line)' }}>
-        <button onClick={onBack} disabled={loading} className="btn-press font-body text-sm tracking-[0.15em] uppercase flex items-center gap-2" style={{ color: 'var(--muted)' }}>
-          <ArrowLeft size={14} /> 뒤로
+    <section className="max-w-xl mx-auto fade-in flex flex-col" style={{ minHeight: '100vh' }}>
+      {/* 상단 헤더 */}
+      <header className="sticky top-0 z-10 flex items-center gap-3 px-4 py-3" style={{ background: '#FFFFFF', borderBottom: '1px solid var(--line)' }}>
+        <button onClick={onBack} disabled={loading} className="btn-press p-1.5" style={{ color: 'var(--muted)' }} aria-label="뒤로">
+          <ArrowLeft size={18} />
         </button>
-        <button onClick={onSubmit} disabled={!isValid || loading}
-          className="btn-press inline-flex items-center gap-3 px-8 py-4 font-body text-sm tracking-[0.2em] uppercase"
-          style={{ background: 'var(--accent)', color: 'var(--cream)', opacity: !isValid || loading ? 0.4 : 1, cursor: !isValid || loading ? 'not-allowed' : 'pointer' }}>
-          {loading ? <><Loader2 size={14} className="animate-spin" /> 검색 중</> : <><Sparkles size={14} /> 룩북 만들기</>}
-        </button>
+        <div className="flex items-center gap-2.5 flex-1">
+          <div className="flex items-center justify-center" style={{ width: 36, height: 36, borderRadius: 18, background: 'var(--ink)' }}>
+            <Sparkles size={15} style={{ color: '#FFFFFF' }} />
+          </div>
+          <div className="leading-tight">
+            <div className="font-display italic text-base" style={{ color: 'var(--ink)', fontWeight: 500 }}>Clo</div>
+            <div className="font-body text-[10px] tracking-[0.15em] uppercase" style={{ color: 'var(--muted)' }}>ClothesAi · Assistant</div>
+          </div>
+        </div>
+      </header>
+
+      {/* 메시지 영역 */}
+      <div className="flex-1 px-4 py-6 space-y-4 pb-32">
+        {messages.map((msg, i) => (
+          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} fade-in`}>
+            <div
+              className="font-body text-sm leading-relaxed whitespace-pre-line"
+              style={{
+                padding: '12px 16px',
+                maxWidth: '78%',
+                background: msg.role === 'user' ? 'var(--ink)' : '#F4F6FA',
+                color: msg.role === 'user' ? '#FFFFFF' : 'var(--ink)',
+                borderRadius: 18,
+                borderTopRightRadius: msg.role === 'user' ? 4 : 18,
+                borderTopLeftRadius: msg.role === 'ai' ? 4 : 18,
+                boxShadow: '0 1px 2px rgba(15,31,74,0.04)',
+              }}
+            >
+              {msg.content}
+            </div>
+          </div>
+        ))}
+
+        {/* 빠른 답변 — AI 첫 메시지 직후, 아직 입력 전에만 노출 */}
+        {!styleQuery.trim() && (
+          <div className="pt-1 space-y-2 fade-in">
+            <div className="font-body text-[10px] tracking-[0.2em] uppercase pl-1" style={{ color: 'var(--muted)' }}>이렇게 표현해 보세요</div>
+            <div className="flex flex-wrap gap-2">
+              {SAMPLE_PROMPTS.map((p, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setStyleQuery(p)}
+                  className="btn-press font-body text-xs"
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: 999,
+                    border: '1px solid var(--line)',
+                    background: '#FFFFFF',
+                    color: 'var(--ink)',
+                  }}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="fade-in" style={{ padding: 12, borderRadius: 12, background: '#FEF2F2', border: '1px solid #FECACA' }}>
+            <div className="font-body text-xs" style={{ color: '#991B1B' }}>{error}</div>
+          </div>
+        )}
+
+        {loading && (
+          <div className="flex justify-start fade-in">
+            <div className="flex items-center gap-2" style={{ padding: '10px 14px', borderRadius: 18, borderTopLeftRadius: 4, background: '#F4F6FA' }}>
+              <Loader2 size={14} className="animate-spin" style={{ color: 'var(--ink)' }} />
+              <span className="font-body text-xs" style={{ color: 'var(--muted)' }}>룩북 만드는 중…</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 하단 고정 입력창 */}
+      <div className="fixed bottom-0 left-0 right-0" style={{ background: '#FFFFFF', borderTop: '1px solid var(--line)' }}>
+        <div className="max-w-xl mx-auto px-4 py-3 flex items-end gap-2">
+          <textarea
+            value={styleQuery}
+            onChange={(e) => setStyleQuery(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="원하는 스타일을 자유롭게 적어주세요"
+            rows={1}
+            disabled={loading}
+            className="flex-1 font-body text-sm"
+            style={{
+              padding: '12px 16px',
+              border: '1px solid var(--line)',
+              borderRadius: 22,
+              resize: 'none',
+              outline: 'none',
+              color: 'var(--ink)',
+              background: '#FFFFFF',
+              maxHeight: 100,
+              lineHeight: 1.4,
+            }}
+          />
+          <button
+            onClick={onSubmit}
+            disabled={!isValid || loading}
+            className="btn-press flex items-center justify-center"
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              background: 'var(--ink)',
+              color: '#FFFFFF',
+              opacity: !isValid || loading ? 0.25 : 1,
+              cursor: !isValid || loading ? 'not-allowed' : 'pointer',
+              flexShrink: 0,
+            }}
+            aria-label="보내기"
+          >
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
+          </button>
+        </div>
+        <div className="text-center pb-2">
+          <span className="font-body text-[10px]" style={{ color: 'var(--muted)' }}>AI 해석 + 실시간 카탈로그 조회 · 약 5~10초</span>
+        </div>
       </div>
     </section>
   );
