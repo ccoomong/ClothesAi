@@ -258,7 +258,21 @@ const callAI = async (profile, styleQuery) => {
     ['hat', 'top', 'bottom', 'shoes'].forEach((slot) => {
       const item = outfit.items[slot];
       if (!item) return;
-      const candidates = slotMap[`${oi}-${slot}`] || [];
+      // 1차: 이 outfit의 해당 슬롯 검색 결과
+      let candidates = slotMap[`${oi}-${slot}`] || [];
+      // 풀이 빈약하면(5개 미만) 다른 outfit의 같은 슬롯 결과를 합쳐 풀 키움 → 빈 박스 방지
+      if (candidates.length < 5) {
+        const merged = [...candidates];
+        result.outfits.forEach((_, other) => {
+          if (other !== oi) merged.push(...(slotMap[`${other}-${slot}`] || []));
+        });
+        const seen = new Set();
+        candidates = merged.filter((c) => {
+          if (!c.product_url || seen.has(c.product_url)) return false;
+          seen.add(c.product_url);
+          return true;
+        });
+      }
       const validCandidates = candidates.filter((c) => c.image_url && /^https?:\/\//.test(c.image_url));
       const pool = validCandidates.length > 0 ? validCandidates : candidates;
       const idx = pool.length > 0 ? oi % pool.length : 0;
