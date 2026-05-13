@@ -481,7 +481,16 @@ function ChatView() {
   const scrollRef = useRef(null);
 
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (!scrollRef.current) return;
+    // 마지막 룩북이 있으면 그 시작 지점 위(AI 인트로 멘트가 보이게)로 부드럽게 스크롤
+    const lookbooks = scrollRef.current.querySelectorAll('[data-lookbook]');
+    const last = lookbooks[lookbooks.length - 1];
+    if (last) {
+      const target = Math.max(0, last.offsetTop - 80);
+      scrollRef.current.scrollTo({ top: target, behavior: 'smooth' });
+    } else {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
   }, [messages, loading]);
 
   const appendAi = (...items) => setMessages((prev) => [...prev, ...items.map((it) => ({ role: 'ai', ...it }))]);
@@ -672,7 +681,7 @@ function ChatView() {
           }
           if (msg.type === 'lookbook') {
             return (
-              <div key={i} className="fade-in" style={{ padding: '4px 0' }}>
+              <div key={i} data-lookbook="true" className="fade-in" style={{ padding: '4px 0' }}>
                 <LookbookGallery outfits={msg.content.outfits} />
               </div>
             );
