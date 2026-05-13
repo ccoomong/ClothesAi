@@ -316,9 +316,12 @@ async function searchNaver(query, display, sort, slot = 'default', gender = null
   let externalOnly = pool.filter((item) => item._link_type === 'external');
   if (externalOnly.length < 2) externalOnly = pool; // 안전장치
 
-  // 3차 필터 — 셀렉트샵(TIER1~3)만 통과 · 일반 스마트스토어 셀러 제외
-  let mallFiltered = externalOnly.filter((item) => item._mall_tier <= 3);
-  if (mallFiltered.length < 2) mallFiltered = externalOnly; // 안전장치
+  // 3차 필터 — 사용자 요청: 무신사·29CM·지그재그 같은 셀렉트샵에서만
+  // 1차: TIER1(전문 셀렉트샵) + TIER3(여성 패션앱) — 사용자가 명시한 몰들
+  // 안전장치: TIER1~3까지 (TIER2 큐레이션몰까지 허용)
+  // TIER4(일반 스마트스토어 셀러)는 어떤 경우에도 통과 X — 깨진 이미지·잡 상품의 주범
+  let mallFiltered = externalOnly.filter((item) => item._mall_tier === 1 || item._mall_tier === 3);
+  if (mallFiltered.length < 2) mallFiltered = externalOnly.filter((item) => item._mall_tier <= 3);
 
   // 4차 필터 — 슬롯 카테고리 매칭
   let categoryFiltered = mallFiltered.filter((item) => item._matches_slot);
