@@ -554,16 +554,13 @@ function ChatView() {
       setProfile(next);
       setStage(3);
       await delay(400);
-      appendAi(
-        { type: 'text', content: '체형은 어느 쪽에 가까워요?' },
-        { type: 'quickReplies', content: ['마른편', '보통', '근육질', '통통'] },
-      );
+      appendAi({ type: 'text', content: '체형은 어떻게 표현해볼까요?\n자유롭게 적어주세요 (예: 마른편, 어깨가 넓음, 살짝 통통)' });
       return;
     }
     if (stage === 3) {
-      if (!['마른편', '보통', '근육질', '통통'].includes(userText)) {
+      if (userText.length < 2) {
         await delay(350);
-        appendAi({ type: 'text', content: '버튼 중에서 골라주세요.' }, { type: 'quickReplies', content: ['마른편', '보통', '근육질', '통통'] });
+        appendAi({ type: 'text', content: '조금 더 구체적으로 적어주세요.' });
         return;
       }
       const next = { ...profile, bodyType: userText };
@@ -615,7 +612,7 @@ function ChatView() {
     if (stage === 0) return '성별을 선택해주세요';
     if (stage === 1) return '나이를 적어주세요 (예: 22)';
     if (stage === 2) return '키를 적어주세요 (cm)';
-    if (stage === 3) return '체형을 선택해주세요';
+    if (stage === 3) return '체형을 자유롭게 적어주세요';
     if (stage === 4) return '예산을 적어주세요 (만원)';
     return '원하는 스타일이나 변경 요청을 적어주세요';
   })();
