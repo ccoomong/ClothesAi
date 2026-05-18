@@ -312,9 +312,9 @@ async function searchNaver(query, display, sort, slot = 'default', gender = null
   let pool = items.filter((item) => item.price_num >= floor);
   if (pool.length < 3) pool = items; // 안전장치
 
-  // 2차 필터 — 외부 직링만 통과 (naver.com 도메인 컷 → 보안 인증 트리거 방지)
-  let externalOnly = pool.filter((item) => item._link_type === 'external');
-  if (externalOnly.length < 2) externalOnly = pool; // 안전장치
+  // 2차 필터 — 외부 직링만 통과 (naver.com 도메인 컷 → 사용자 요청: 쇼핑몰 페이지로만 이동)
+  // 안전장치 제거: 네이버 redirect 페이지로 사용자가 가는 일은 절대 X
+  const externalOnly = pool.filter((item) => item._link_type === 'external');
 
   // 3차 필터 — 사용자 요청: 무신사·29CM·지그재그 같은 셀렉트샵에서만
   // 1차: TIER1(전문 셀렉트샵) + TIER3(여성 패션앱) — 사용자가 명시한 몰들
