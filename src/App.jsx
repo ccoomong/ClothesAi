@@ -103,6 +103,27 @@ const SAMPLE_PROMPTS = [
   '주말 카페 데이트, 편안한데 신경쓴 느낌',
 ];
 
+// 한 번 탭으로 끝나는 스타일 입력 — TPO + 무드 칩
+const TPO_CHIPS = [
+  '개강 첫날', '주말 카페', '소개팅', '면접 후 약속',
+  '데이트', '친구 만남', '출근·등교', '여행',
+];
+
+const MOOD_CHIPS = [
+  '꾸안꾸', '미니멀', '올드머니', '스트릿',
+  '프렌치 빈티지', '캐주얼', '댄디', '스포티', 'Y2K',
+];
+
+// 성별만 받으면 나머지 프로필은 평균값으로 채워 룩북 생성 진입을 단축
+const buildDefaultProfile = (gender) => ({
+  gender,
+  age: '24',
+  height: gender === '남성' ? '174' : '163',
+  bodyType: '보통',
+  budget: '30',
+  dislikes: '',
+});
+
 // ─────────────────────────────────────────────────────────────
 // 🔥 v7 핵심 변경점
 // 이전: fetch('https://api.anthropic.com/v1/messages', ...) → CORS 차단
@@ -506,10 +527,103 @@ function ProfileForm({ profile, setProfile, onNext, onBack }) {
 
 const INITIAL_PROFILE = { gender: '', age: '', height: '', bodyType: '', budget: '', dislikes: '' };
 const INITIAL_MESSAGES = [
-  { role: 'ai', type: 'text', content: '안녕하세요, 클로예요.\n친구처럼 코디 같이 골라드릴게요.' },
-  { role: 'ai', type: 'text', content: '먼저 성별이 어떻게 되세요?' },
-  { role: 'ai', type: 'quickReplies', content: ['남성', '여성'] },
+  { role: 'ai', type: 'text', content: '안녕하세요, 클로예요.\n어떤 자리·무드로 코디 짜드릴까요?\n칩 골라주시면 빠르게, 더 적고 싶으면 자유롭게 적어주세요.' },
+  { role: 'ai', type: 'stylePicker' },
 ];
+
+function StyleChipRow({ label, items, value, onPick, disabled }) {
+  return (
+    <div>
+      <div className="font-body text-[10px] tracking-[0.2em] uppercase mb-2" style={{ color: 'var(--muted)' }}>{label}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((c) => {
+          const active = value === c;
+          return (
+            <button key={c} type="button" disabled={disabled}
+              onClick={() => onPick(active ? '' : c)}
+              className="btn-press font-body text-xs"
+              style={{
+                padding: '6px 12px',
+                borderRadius: 999,
+                border: `1px solid ${active ? 'var(--ink)' : 'var(--line)'}`,
+                background: active ? 'var(--ink)' : '#FFFFFF',
+                color: active ? '#FFFFFF' : 'var(--ink)',
+              }}>
+              {c}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function StylePicker({ onSubmit, disabled }) {
+  const [tpo, setTpo] = useState('');
+  const [mood, setMood] = useState('');
+  const [text, setText] = useState('');
+
+  const canSubmit = !disabled && (tpo || mood || text.trim().length > 1);
+
+  const submit = () => {
+    if (!canSubmit) return;
+    const parts = [];
+    if (tpo) parts.push(tpo);
+    if (mood) parts.push(`${mood} 무드`);
+    if (text.trim()) parts.push(text.trim());
+    onSubmit(parts.join(' · '));
+  };
+
+  return (
+    <div className="fade-in" style={{
+      padding: 16,
+      background: '#F4F6FA',
+      borderRadius: 18,
+      borderTopLeftRadius: 4,
+      maxWidth: '90%',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 14,
+    }}>
+      <StyleChipRow label="상황 (선택)" items={TPO_CHIPS} value={tpo} onPick={setTpo} disabled={disabled} />
+      <StyleChipRow label="무드 (선택)" items={MOOD_CHIPS} value={mood} onPick={setMood} disabled={disabled} />
+      <input
+        type="text"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter' || e.shiftKey) return;
+          if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+          e.preventDefault();
+          submit();
+        }}
+        placeholder="더 자세히 (예: 따뜻한 톤, 깔끔하게)"
+        disabled={disabled}
+        className="font-body"
+        style={{
+          padding: '10px 14px',
+          borderRadius: 12,
+          border: '1px solid var(--line)',
+          background: '#FFFFFF',
+          color: 'var(--ink)',
+          fontSize: 14,
+        }}
+      />
+      <button type="button" onClick={submit} disabled={!canSubmit}
+        className="btn-press font-body text-xs tracking-[0.2em] uppercase"
+        style={{
+          padding: '12px 16px',
+          background: 'var(--ink)',
+          color: '#FFFFFF',
+          borderRadius: 12,
+          opacity: canSubmit ? 1 : 0.3,
+          cursor: canSubmit ? 'pointer' : 'not-allowed',
+        }}>
+        코디 보기
+      </button>
+    </div>
+  );
+}
 
 const LOADING_PHASES = [
   '스타일 표현 분석 중',
@@ -523,10 +637,14 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 function ChatView() {
   const [messages, setMessages] = useState(INITIAL_MESSAGES);
   const [profile, setProfile] = useState(INITIAL_PROFILE);
-  const [stage, setStage] = useState(0); // 0:성별 1:나이 2:키 3:체형 4:예산 5:스타일 (이후 자유 대화)
+  // 0: 스타일(StylePicker) → 1: 성별 → 2+: 자유 대화 (룩북 이후 변형 요청)
+  const [stage, setStage] = useState(0);
+  const [styleQuery, setStyleQuery] = useState('');
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingPhase, setLoadingPhase] = useState(0);
+  // 코디 단위 재생성 추적: { msgIdx, outfitIdx } 또는 null
+  const [regenInfo, setRegenInfo] = useState(null);
   // /api/trends 결과 — 못 가져오면 null로 두고 manual 트렌드만 사용
   const [trends, setTrends] = useState(null);
   const scrollRef = useRef(null);
@@ -560,10 +678,10 @@ function ChatView() {
     }
   }, [messages, loading]);
 
-  // 자유 입력이 필요한 단계(나이·키·체형·예산·스타일)에선 자동으로 포커스
+  // 자유 입력이 필요한 단계(룩북 이후 자유 대화)에선 자동으로 포커스
   useEffect(() => {
     if (loading) return;
-    if (stage >= 1 && inputRef.current) {
+    if (stage >= 2 && inputRef.current) {
       const t = setTimeout(() => inputRef.current?.focus(), 120);
       return () => clearTimeout(t);
     }
@@ -571,7 +689,7 @@ function ChatView() {
 
   const appendAi = (...items) => setMessages((prev) => [...prev, ...items.map((it) => ({ role: 'ai', ...it }))]);
   const appendUser = (text) => setMessages((prev) => [
-    ...prev.filter((m) => m.type !== 'quickReplies'),
+    ...prev.filter((m) => m.type !== 'quickReplies' && m.type !== 'stylePicker'),
     { role: 'user', type: 'text', content: text },
   ]);
 
@@ -583,7 +701,7 @@ function ChatView() {
       appendAi(
         { type: 'text', content: `'${data.mood_label}' 무드로 골라봤어요. 마음에 드는 한 벌이 있길!` },
         { type: 'lookbook', content: data },
-        { type: 'text', content: '상품 카드를 누르면 구매 페이지로 가요. 다른 무드나 변형도 자유롭게 말해주세요.' },
+        { type: 'text', content: '카드 위 "이 코디만 다시"로 코디 단위로 새로 받아볼 수 있어요. 상품 카드를 누르면 네이버 구매 페이지로 갑니다.' },
       );
     } catch (e) {
       console.error(e);
@@ -593,6 +711,48 @@ function ChatView() {
     }
   };
 
+  // 코디 한 벌만 다시 — 전체 룩북은 유지하고 해당 인덱스의 코디만 교체
+  const regenerateOutfit = async (msgIdx, outfitIdx) => {
+    if (regenInfo || loading) return;
+    if (!profile.gender || !styleQuery) return;
+    setRegenInfo({ msgIdx, outfitIdx });
+    try {
+      const data = await callAI(profile, styleQuery, trends);
+      // 새 응답에서 같은 슬롯(outfitIdx) 우선, 없으면 첫 번째 코디로 교체
+      const fresh = data.outfits[outfitIdx] || data.outfits[0];
+      setMessages((prev) => prev.map((m, i) => {
+        if (i !== msgIdx || m.type !== 'lookbook') return m;
+        const updated = JSON.parse(JSON.stringify(m.content));
+        updated.outfits[outfitIdx] = fresh;
+        return { ...m, content: updated };
+      }));
+    } catch (e) {
+      console.error(e);
+      appendAi({ type: 'error', content: `코디를 다시 만드는 데 실패했어요. (${e.message})` });
+    } finally {
+      setRegenInfo(null);
+    }
+  };
+
+  // 스타일이 정해진 뒤 공통 처리 (사용자 메시지 출력은 호출자가 책임)
+  const advanceFromStyle = async (userText) => {
+    setStyleQuery(userText);
+    setStage(1);
+    await delay(350);
+    appendAi(
+      { type: 'text', content: '거의 다 됐어요. 마지막으로 성별만 알려주세요.' },
+      { type: 'quickReplies', content: ['남성', '여성'] },
+    );
+  };
+
+  // StylePicker 칩 제출 — 화면에 사용자 메시지 찍고 다음 단계
+  const handleStylePick = async (text) => {
+    const userText = (text || '').trim();
+    if (!userText || loading || stage !== 0) return;
+    appendUser(userText);
+    await advanceFromStyle(userText);
+  };
+
   const handleAnswer = async (text) => {
     const userText = text.trim();
     if (!userText || loading) return;
@@ -600,80 +760,31 @@ function ChatView() {
     appendUser(userText);
     setInput('');
 
-    // 단계별 정보 수집
+    // stage 0: 하단 입력창에서 자유 입력으로 스타일을 직접 답한 경우
     if (stage === 0) {
-      if (!['남성', '여성'].includes(userText)) {
-        await delay(350);
-        appendAi({ type: 'text', content: '아래 버튼 중 하나로 선택해주세요.' }, { type: 'quickReplies', content: ['남성', '여성'] });
-        return;
-      }
-      const next = { ...profile, gender: userText };
-      setProfile(next);
-      setStage(1);
-      await delay(400);
-      appendAi({ type: 'text', content: `${userText}분이군요. 나이가 어떻게 되세요?` });
-      return;
-    }
-    if (stage === 1) {
-      const age = userText.replace(/[^0-9]/g, '').slice(0, 2);
-      if (!age) {
-        await delay(350);
-        appendAi({ type: 'text', content: '숫자만 적어주세요. 예: 22' });
-        return;
-      }
-      const next = { ...profile, age };
-      setProfile(next);
-      setStage(2);
-      await delay(400);
-      appendAi({ type: 'text', content: `${age}살이시군요. 키는 어떻게 되세요?` });
-      return;
-    }
-    if (stage === 2) {
-      const height = userText.replace(/[^0-9]/g, '').slice(0, 3);
-      if (!height) {
-        await delay(350);
-        appendAi({ type: 'text', content: '숫자로 적어주세요. 예: 175' });
-        return;
-      }
-      const next = { ...profile, height };
-      setProfile(next);
-      setStage(3);
-      await delay(400);
-      appendAi({ type: 'text', content: '체형은 어떻게 표현해볼까요?\n자유롭게 적어주세요 (예: 마른편, 어깨가 넓음, 뱃살 살짝 있음, 하체비만 등)' });
-      return;
-    }
-    if (stage === 3) {
-      if (userText.length < 2) {
-        await delay(350);
-        appendAi({ type: 'text', content: '조금 더 구체적으로 적어주세요.' });
-        return;
-      }
-      const next = { ...profile, bodyType: userText };
-      setProfile(next);
-      setStage(4);
-      await delay(400);
-      appendAi({ type: 'text', content: '예산은 어느 정도로 보세요?' });
-      return;
-    }
-    if (stage === 4) {
-      const budget = userText.replace(/[^0-9]/g, '').slice(0, 4);
-      if (!budget) {
-        await delay(350);
-        appendAi({ type: 'text', content: '숫자만 적어주세요. 예: 20' });
-        return;
-      }
-      const next = { ...profile, budget };
-      setProfile(next);
-      setStage(5);
-      await delay(400);
-      appendAi(
-        { type: 'text', content: '좋아요, 다 받았어요!\n이제 어떤 스타일·분위기로 가고 싶어요?' },
-        { type: 'quickReplies', content: SAMPLE_PROMPTS },
-      );
+      await advanceFromStyle(userText);
       return;
     }
 
-    // stage 5+: 스타일 입력 → 룩북 생성, 이후 자유 대화
+    // stage 1: 성별 → 기본 프로필로 채우고 바로 룩북 생성
+    if (stage === 1) {
+      if (!['남성', '여성'].includes(userText)) {
+        await delay(350);
+        appendAi(
+          { type: 'text', content: '아래 버튼 중 하나로 선택해주세요.' },
+          { type: 'quickReplies', content: ['남성', '여성'] },
+        );
+        return;
+      }
+      const next = buildDefaultProfile(userText);
+      setProfile(next);
+      setStage(2);
+      await generateLookbook(styleQuery, next);
+      return;
+    }
+
+    // stage 2+: 자유 대화 — 입력한 표현으로 새 룩북 생성
+    setStyleQuery(userText);
     await generateLookbook(userText, profile);
   };
 
@@ -688,18 +799,17 @@ function ChatView() {
     setMessages(INITIAL_MESSAGES);
     setProfile(INITIAL_PROFILE);
     setStage(0);
+    setStyleQuery('');
     setInput('');
     setLoading(false);
+    setRegenInfo(null);
   };
 
   const placeholder = (() => {
     if (loading) return 'Clo가 답하는 중…';
-    if (stage === 0) return '성별을 선택해주세요';
-    if (stage === 1) return '나이를 적어주세요 (예: 22)';
-    if (stage === 2) return '키를 적어주세요 (cm)';
-    if (stage === 3) return '체형을 자유롭게 적어주세요';
-    if (stage === 4) return '예산을 적어주세요 (만원)';
-    return '원하는 스타일이나 변경 요청을 적어주세요';
+    if (stage === 0) return '위 칩을 골라주세요 (또는 자유롭게 적기)';
+    if (stage === 1) return '성별 버튼을 눌러주세요';
+    return '바꾸고 싶은 표현을 적어주세요 (예: 더 캐주얼하게)';
   })();
 
   return (
@@ -755,10 +865,22 @@ function ChatView() {
               </div>
             );
           }
+          if (msg.type === 'stylePicker') {
+            // 한 번만 활성 — 이미 스타일을 보냈으면(stage > 0) 칩 비활성화
+            return (
+              <div key={i} className="flex justify-start fade-in">
+                <StylePicker onSubmit={handleStylePick} disabled={stage !== 0 || loading} />
+              </div>
+            );
+          }
           if (msg.type === 'lookbook') {
             return (
               <div key={i} data-lookbook="true" className="fade-in" style={{ padding: '4px 0' }}>
-                <LookbookGallery outfits={msg.content.outfits} />
+                <LookbookGallery
+                  outfits={msg.content.outfits}
+                  onRegenerate={(outfitIdx) => regenerateOutfit(i, outfitIdx)}
+                  regeneratingIndex={regenInfo?.msgIdx === i ? regenInfo.outfitIdx : null}
+                />
               </div>
             );
           }
@@ -1103,12 +1225,12 @@ function HoverPreview({ item, slot }) {
   );
 }
 
-function LookbookCard({ outfit, index, total }) {
+function LookbookCard({ outfit, index, total, onRegenerate, regenerating }) {
   const items = SLOT_ORDER.map((slot) => ({ slot, item: outfit.items[slot] })).filter(({ item }) => item);
 
   return (
-    <div className="lookbook-paper relative overflow-hidden" style={{ minHeight: 720 }}>
-      <div className="absolute top-0 left-0 right-0 px-6 pt-6 z-20 flex items-start justify-between">
+    <div className="lookbook-paper relative overflow-hidden" style={{ minHeight: 720, opacity: regenerating ? 0.55 : 1, transition: 'opacity 0.2s' }}>
+      <div className="absolute top-0 left-0 right-0 px-6 pt-6 z-20 flex items-start justify-between gap-3">
         <div>
           <div className="font-body text-[10px] tracking-[0.35em] uppercase" style={{ color: 'var(--ink-soft)' }}>
             ClothesAi · LookBook
@@ -1117,10 +1239,31 @@ function LookbookCard({ outfit, index, total }) {
             No. {String(index + 1).padStart(2, '0')} / {String(total).padStart(2, '0')}
           </div>
         </div>
-        <div className="px-5 py-2.5 rounded-full" style={{ background: 'rgba(255,255,255,0.92)', boxShadow: '0 4px 16px rgba(0,0,0,0.1)' }}>
-          <span className="font-body text-sm" style={{ color: 'var(--ink)', fontWeight: 700 }}>
-            상하의 {outfit.total_price || '—'}
-          </span>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {onRegenerate && (
+            <button
+              type="button"
+              onClick={() => onRegenerate(index)}
+              disabled={regenerating}
+              className="btn-press font-body text-[10px] tracking-[0.15em] uppercase flex items-center gap-1.5 px-3 py-2"
+              style={{
+                background: 'rgba(255,255,255,0.92)',
+                color: 'var(--ink)',
+                border: '1px solid var(--ink)',
+                borderRadius: 999,
+                cursor: regenerating ? 'wait' : 'pointer',
+                opacity: regenerating ? 0.6 : 1,
+              }}
+            >
+              {regenerating ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+              {regenerating ? '만드는 중' : '이 코디만 다시'}
+            </button>
+          )}
+          <div className="px-5 py-2.5 rounded-full" style={{ background: 'rgba(255,255,255,0.92)', boxShadow: '0 4px 16px rgba(0,0,0,0.1)' }}>
+            <span className="font-body text-sm" style={{ color: 'var(--ink)', fontWeight: 700 }}>
+              상하의 {outfit.total_price || '—'}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -1207,7 +1350,7 @@ function LookbookCard({ outfit, index, total }) {
   );
 }
 
-function LookbookGallery({ outfits }) {
+function LookbookGallery({ outfits, onRegenerate, regeneratingIndex }) {
   const [current, setCurrent] = useState(0);
   const [direction, setDirection] = useState('right');
   const total = outfits.length;
@@ -1261,7 +1404,13 @@ function LookbookGallery({ outfits }) {
       <div className="relative">
         <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
           <div key={current} className={direction === 'right' ? 'slide-in-right' : 'slide-in-left'}>
-            <LookbookCard outfit={outfits[current]} index={current} total={total} />
+            <LookbookCard
+              outfit={outfits[current]}
+              index={current}
+              total={total}
+              onRegenerate={onRegenerate}
+              regenerating={regeneratingIndex === current}
+            />
           </div>
         </div>
       </div>
