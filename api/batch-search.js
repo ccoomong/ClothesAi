@@ -307,10 +307,13 @@ async function searchNaver(query, display, sort, slot = 'default', gender = null
     };
   });
 
+  const rawCount = items.length;
+
   // 1차 필터 — 가격 하한
   const floor = PRICE_FLOOR[slot] || PRICE_FLOOR.default;
   let pool = items.filter((item) => item.price_num >= floor);
   if (pool.length < 3) pool = items; // 안전장치
+  const priceCount = pool.length;
 
   // 2차 필터 — 쇼핑몰 자체 도메인(external) + 셀러 스토어(smartstore)만 통과
   // brand.naver.com(보안 인증 트리거)·search.shopping.naver.com(검색결과 페이지)은 절대 X
@@ -366,9 +369,15 @@ async function searchNaver(query, display, sort, slot = 'default', gender = null
 
   // 이미지 URL 없는 항목은 화면에서 깨지므로 통째 제거
   const withImage = final.filter((item) => item.image_url && /^https?:\/\//.test(item.image_url));
-  // 신뢰 가능한 셀렉트샵 CDN 이미지만 통과 (만료·404 가능성 ↓)
   const trustedImage = withImage.filter((item) => item._is_clean_cdn || isTrustedFallbackImage(item.image_url));
   const ready = trustedImage.length >= 2 ? trustedImage : (withImage.length > 0 ? withImage : final);
+
+  // 디버그 로그 — 슬롯별 검색어 + 단계별 통과 개수
+  console.log(
+    `[search] slot=${slot} q="${usedQuery}" naver=${rawCount} price=${priceCount} ` +
+    `ext=${externalOnly.length} mall=${mallFiltered.length} cat=${categoryFiltered.length} ` +
+    `gen=${genderFiltered.length} img=${withImage.length} trust=${trustedImage.length} → final=${ready.length}`
+  );
 
   return ready.map(({ _link_type, _mall_tier, _has_model_keyword, _has_multi_keyword, _is_clean_cdn, _matches_slot, _violates_gender, ...rest }) => rest);
 }

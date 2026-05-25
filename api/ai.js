@@ -60,6 +60,21 @@ export default async function handler(req, res) {
 
     const groqText = data.choices?.[0]?.message?.content || '';
 
+    // 디버그 로그 — outfits 개수 + 각 슬롯 검색어 (Vercel Functions Logs에서 확인)
+    try {
+      const parsed = JSON.parse(groqText);
+      const outfits = parsed.outfits || [];
+      const summary = outfits.map((o, i) => {
+        const kws = ['hat', 'top', 'bottom', 'shoes']
+          .map((s) => `${s}="${o.items?.[s]?.search_keyword || '?'}"`)
+          .join(' ');
+        return `  [${i}] title="${o.title || ''}" ${kws}`;
+      }).join('\n');
+      console.log(`[AI] mood="${parsed.mood_label || '?'}" outfits=${outfits.length}\n${summary}`);
+    } catch {
+      console.log('[AI] JSON parse failed. Raw response (first 400):', groqText.slice(0, 400));
+    }
+
     return res.status(200).json({
       id: `groq-${Date.now()}`,
       type: 'message',
