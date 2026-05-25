@@ -397,13 +397,9 @@ mood_label과 검색어는 **이 토큰들에서 직접 파생**되어야 한다
         item.is_direct_product = true;
         totalPrice += picked.price_num || 0;
       } else {
-        // 백엔드 폴백도 통과 못한 극히 드문 케이스 — 네이버 검색 페이지로 안내
-        item.name = item.search_keyword;
-        item.image_url = '';
-        item.product_url = `https://search.shopping.naver.com/search/all?query=${encodeURIComponent(item.search_keyword)}`;
-        item.price = '비슷한 상품 보기';
-        item.price_num = 0;
-        item.is_direct_product = false;
+        // 사용자 요청: 네이버 검색 페이지로 보내는 fallback 금지. 슬롯 자체를 비움.
+        // 프론트 렌더링은 outfit.items[slot] 부재를 조건부로 건너뜀.
+        delete outfit.items[slot];
       }
     });
     outfit.total_price = totalPrice > 0 ? `${totalPrice.toLocaleString()}원` : '';

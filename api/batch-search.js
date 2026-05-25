@@ -69,12 +69,27 @@ function isCleanImageDomain(url) {
   }
 }
 
-function matchesSlotCategory(category, slot) {
-  if (!category || slot === 'default') return true;
+// 슬롯 매칭: 카테고리 OR 이름에 해당 슬롯 어휘가 있어야 통과.
+// Naver 카테고리가 잘리거나 일반적("패션의류")인 경우 이름으로 보완.
+function matchesSlot(name, category, slot) {
+  if (slot === 'default') return true;
   const allowed = SLOT_CATEGORIES[slot];
   if (!allowed) return true;
-  const lower = category.toLowerCase();
-  return allowed.some((kw) => lower.includes(kw.toLowerCase()));
+  const haystack = `${category || ''} ${name || ''}`.toLowerCase();
+  return allowed.some((kw) => haystack.includes(kw.toLowerCase()));
+}
+
+// 크로스 슬롯 배제: 이름에 다른 슬롯 어휘가 강하게 들어가면 위양성 차단
+// (예: bottom 슬롯에 "셔츠" 들어간 이름이 카테고리 우연 매칭으로 통과하는 케이스)
+function looksLikeOtherSlot(name, slot) {
+  if (!name || slot === 'default') return false;
+  const lower = name.toLowerCase();
+  const ownKws = SLOT_CATEGORIES[slot] || [];
+  // 본인 슬롯 어휘도 있으면 OK (예: "셔츠형 원피스" 같은 합성어 케이스)
+  if (ownKws.some((kw) => lower.includes(kw.toLowerCase()))) return false;
+  return Object.entries(SLOT_CATEGORIES)
+    .filter(([s]) => s !== slot)
+    .some(([_, kws]) => kws.some((kw) => lower.includes(kw.toLowerCase())));
 }
 
 function violatesGender(haystack, gender) {
@@ -302,7 +317,8 @@ async function searchNaver(query, display, sort, slot = 'default', gender = null
       _has_model_keyword: MODEL_SHOT_KEYWORDS.test(cleanName),
       _has_multi_keyword: MULTI_PRODUCT_KEYWORDS.test(cleanName),
       _is_clean_cdn: isCleanImageDomain(item.image),
-      _matches_slot: matchesSlotCategory(category, slot),
+      _matches_slot: matchesSlot(cleanName, category, slot),
+      _looks_other_slot: looksLikeOtherSlot(cleanName, slot),
       _violates_gender: violatesGender(haystack, gender),
     };
   });
@@ -328,8 +344,10 @@ async function searchNaver(query, display, sort, slot = 'default', gender = null
   let mallFiltered = externalOnly.filter((item) => item._mall_tier === 1 || item._mall_tier === 3);
   if (mallFiltered.length < 2) mallFiltered = externalOnly.filter((item) => item._mall_tier <= 3);
 
-  // 4차 필터 — 슬롯 카테고리 매칭 (안전장치 X · 모자엔 모자만 · 셔츠 들어오면 안 됨)
-  const categoryFiltered = mallFiltered.filter((item) => item._matches_slot);
+  // 4차 필터 — 슬롯 엄격 매칭 (안전장치 X · 모자엔 모자만 · 셔츠 들어오면 안 됨)
+  // _matches_slot: 카테고리/이름에 본인 슬롯 어휘 포함
+  // !_looks_other_slot: 이름에 다른 슬롯 어휘 강하게 보이면 배제 (e.g. bottom에 "셔츠" 단어)
+  const categoryFiltered = mallFiltered.filter((item) => item._matches_slot && !item._looks_other_slot);
 
   // 5차 필터 — 성별 위반 제거
   let genderFiltered = categoryFiltered.filter((item) => !item._violates_gender);
@@ -372,6 +390,7 @@ async function searchNaver(query, display, sort, slot = 'default', gender = null
   const trustedImage = withImage.filter((item) => item._is_clean_cdn || isTrustedFallbackImage(item.image_url));
   const ready = trustedImage.length >= 2 ? trustedImage : (withImage.length > 0 ? withImage : final);
 
+<<<<<<< HEAD
   // 디버그 로그 — 슬롯별 검색어 + 단계별 통과 개수
   console.log(
     `[search] slot=${slot} q="${usedQuery}" naver=${rawCount} price=${priceCount} ` +
@@ -380,6 +399,9 @@ async function searchNaver(query, display, sort, slot = 'default', gender = null
   );
 
   return ready.map(({ _link_type, _mall_tier, _has_model_keyword, _has_multi_keyword, _is_clean_cdn, _matches_slot, _violates_gender, ...rest }) => rest);
+=======
+  return ready.map(({ _link_type, _mall_tier, _has_model_keyword, _has_multi_keyword, _is_clean_cdn, _matches_slot, _looks_other_slot, _violates_gender, ...rest }) => rest);
+>>>>>>> 810c236 (fix(slots): enforce strict slot integrity + drop Naver-search fallback URL)
 }
 
 // 폴백 신뢰 도메인 — 셀렉트샵 외에도 안정적으로 image 호스팅하는 CDN
