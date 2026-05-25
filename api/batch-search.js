@@ -183,8 +183,8 @@ JSON으로만 답하라.
 
 async function rankByVisionClassification(items, slot) {
   if (!Array.isArray(items) || items.length <= 1) return items;
-  // 슬롯당 상위 2장만 분류 (분당 한도 안전: 12 슬롯 × 2 = 24회 < 30회)
-  const head = items.slice(0, 2);
+  // 슬롯당 1장만 분류 — 분당 한도 안전 (12 슬롯 × 1 = 12회 << 30회)
+  const head = items.slice(0, 1);
 
   const types = await Promise.all(
     head.map((it) =>
@@ -211,7 +211,7 @@ async function rankByVisionClassification(items, slot) {
   const cleanOrScene = scored.filter((item) => item._vision_type === 'clean' || item._vision_type === 'scene');
   const survivors = cleanOrScene.length >= 1 ? cleanOrScene : scored;
   const cleanedHead = survivors.map(({ _vision_score, _vision_type, ...rest }) => rest);
-  return [...cleanedHead, ...items.slice(2)];
+  return [...cleanedHead, ...items.slice(1)];
 }
 
 async function callNaverApi(query, display, sort) {
@@ -325,9 +325,8 @@ async function searchNaver(query, display, sort, slot = 'default', gender = null
   let mallFiltered = externalOnly.filter((item) => item._mall_tier === 1 || item._mall_tier === 3);
   if (mallFiltered.length < 2) mallFiltered = externalOnly.filter((item) => item._mall_tier <= 3);
 
-  // 4차 필터 — 슬롯 카테고리 매칭
-  let categoryFiltered = mallFiltered.filter((item) => item._matches_slot);
-  if (categoryFiltered.length < 2) categoryFiltered = mallFiltered; // 안전장치
+  // 4차 필터 — 슬롯 카테고리 매칭 (안전장치 X · 모자엔 모자만 · 셔츠 들어오면 안 됨)
+  const categoryFiltered = mallFiltered.filter((item) => item._matches_slot);
 
   // 5차 필터 — 성별 위반 제거
   let genderFiltered = categoryFiltered.filter((item) => !item._violates_gender);
