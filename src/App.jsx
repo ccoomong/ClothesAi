@@ -359,9 +359,10 @@ mood_label과 검색어는 **이 토큰들에서 직접 파생**되어야 한다
       if (!item) return;
       // 1차: 본인 outfit 결과 (Naver sim 정렬 1순위가 곧 본인 키워드 베스트 매칭)
       let candidates = slotMap[`${oi}-${slot}`] || [];
-      // 2차: 본인 풀이 0건일 때만 다른 outfit에서 빌리되, 색 매칭 우선 정렬
-      if (candidates.length === 0) {
-        const merged = [];
+      // 2차: 본인 풀의 image 있는 후보가 3개 미만이면 다른 outfit에서 보충 — 색 매칭 우선
+      const ownValid = candidates.filter((c) => c.image_url && /^https?:\/\//.test(c.image_url));
+      if (ownValid.length < 3) {
+        const merged = [...candidates]; // 본인 결과 우선 보존, 다른 outfit으로 보충
         result.outfits.forEach((_, other) => {
           if (other !== oi) merged.push(...(slotMap[`${other}-${slot}`] || []));
         });
