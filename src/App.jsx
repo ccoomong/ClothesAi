@@ -376,8 +376,9 @@ mood_label과 검색어는 **이 토큰들에서 직접 파생**되어야 한다
         uniqueMerged.sort((a, b) => colorMatchScore(a.name, intendedColor) - colorMatchScore(b.name, intendedColor));
         candidates = uniqueMerged;
       }
-      const validCandidates = candidates.filter((c) => c.image_url && /^https?:\/\//.test(c.image_url));
-      const pool = validCandidates.length > 0 ? validCandidates : candidates;
+      // 이미지 있는 후보만 사용. 빈 이미지 폴백 금지 — 회색 박스 렌더 차단.
+      // pool이 비면 picked = undefined → 아래 else에서 슬롯 자체 삭제됨.
+      const pool = candidates.filter((c) => c.image_url && /^https?:\/\//.test(c.image_url));
       const picked = pool[0];
       // 이미지 로드 실패 시 cascade할 backup URLs (다음 후보 4개까지)
       const altImages = pool
