@@ -112,26 +112,36 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST만 허용됩니다' });
 
-  const { queries, gender } = req.body;
-  if (!Array.isArray(queries)) {
-    return res.status(400).json({ error: 'queries 배열이 필요합니다' });
+  try {
+    const body = req.body || {};
+    const { queries, gender } = body;
+    if (!Array.isArray(queries)) {
+      return res.status(400).json({ error: 'queries 배열이 필요합니다' });
+    }
+
+    const results = await Promise.all(
+      queries.map(async (q) => {
+        try {
+          const slotType = (q.slot || '').split('-').pop() || 'default';
+          const items = await searchNaver(q.keyword, 20, q.sort || 'sim', slotType, gender);
+          const ranked = await rankByVisionClassification(items, slotType);
+          return { slot: q.slot, keyword: q.keyword, items: ranked.slice(0, q.display || 5) };
+        } catch (e) {
+          console.error(`[batch] slot=${q.slot} q="${q.keyword}" err=${e.message}\n${e.stack}`);
+          return { slot: q.slot, keyword: q.keyword, items: [], error: e.message };
+        }
+      })
+    );
+
+    return res.status(200).json({ ok: true, results });
+  } catch (e) {
+    console.error('[batch] handler fatal:', e.message, '\n', e.stack);
+    return res.status(500).json({
+      error: 'batch-search handler 에러',
+      message: e.message,
+      stack: e.stack?.split('\n').slice(0, 4).join(' | '),
+    });
   }
-
-  const results = await Promise.all(
-    queries.map(async (q) => {
-      try {
-        const slotType = (q.slot || '').split('-').pop() || 'default';
-        const items = await searchNaver(q.keyword, 20, q.sort || 'sim', slotType, gender);
-        const ranked = await rankByVisionClassification(items, slotType);
-        // HEAD 검증은 제거 — frontend의 5단 cascade fallback이 죽은 URL 처리
-        return { slot: q.slot, keyword: q.keyword, items: ranked.slice(0, q.display || 5) };
-      } catch (e) {
-        return { slot: q.slot, keyword: q.keyword, items: [], error: e.message };
-      }
-    })
-  );
-
-  return res.status(200).json({ ok: true, results });
 }
 
 // ─────────────────────────────────────────────────────────────
