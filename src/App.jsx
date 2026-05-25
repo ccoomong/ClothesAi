@@ -130,6 +130,37 @@ const buildDefaultProfile = (gender) => ({
 // 이제: fetch(`${WORKER_URL}/ai`, ...) → Worker 프록시 경유 → Vercel 배포 OK
 // ─────────────────────────────────────────────────────────────
 
+// 색 어휘 — outfit 간 폴백 시 AI가 의도한 색에 가까운 상품을 우선 선택하기 위함
+const COLOR_VOCAB = [
+  '블랙', '검정', '검은', '먹',
+  '화이트', '아이보리', '크림', '오프화이트',
+  '베이지', '샌드',
+  '차콜', '그레이', '회색', '멜란지',
+  '네이비', '남색', '딥블루',
+  '브라운', '갈색', '모카', '초콜릿', '카멜',
+  '카키', '올리브',
+  '와인', '버건디', '레드', '빨간',
+  '핑크', '코랄', '살구',
+  '블루', '하늘', '청', '인디고',
+  '옐로우', '머스타드', '버터',
+  '그린', '민트', '세이지',
+  '퍼플', '라벤더',
+  '오렌지',
+];
+
+// 0 = 의도 색 정확히 포함 / 1 = 색 정보 없음 / 2 = 다른 색 포함 (배제 우선순위 ↑)
+const colorMatchScore = (candidateName, intendedColor) => {
+  if (!candidateName || !intendedColor) return 1;
+  const name = candidateName.toLowerCase();
+  const target = intendedColor.toLowerCase();
+  if (name.includes(target)) return 0;
+  const hasOtherColor = COLOR_VOCAB.some((c) => {
+    const cl = c.toLowerCase();
+    return cl !== target && name.includes(cl);
+  });
+  return hasOtherColor ? 2 : 1;
+};
+
 // 하이브리드 트렌드 블록 — 수동 큐레이션 + DataLab 자동 시그널
 const buildTrendBlock = (trends) => {
   const lines = [];
@@ -303,34 +334,37 @@ const callAI = async (profile, styleQuery, trends) => {
   });
 
   // ─── 3단계 — 검색 결과 1순위로 슬롯 합성 ───
+  // 정책: 본인 outfit 검색 결과 우선(색·키워드 정확). 0건일 때만 다른 outfit 풀에서
+  // AI 의도 색에 가까운 순으로 폴백. modulo 인덱스 순환은 색 깨짐 원인이라 제거.
   result.outfits.forEach((outfit, oi) => {
     let totalPrice = 0;
     ['hat', 'top', 'bottom', 'shoes'].forEach((slot) => {
       const item = outfit.items[slot];
       if (!item) return;
-      // 1차: 이 outfit의 해당 슬롯 검색 결과
+      // 1차: 본인 outfit 결과 (Naver sim 정렬 1순위가 곧 본인 키워드 베스트 매칭)
       let candidates = slotMap[`${oi}-${slot}`] || [];
-      // 풀이 빈약하면(5개 미만) 다른 outfit의 같은 슬롯 결과를 합쳐 풀 키움 → 빈 박스 방지
-      if (candidates.length < 5) {
-        const merged = [...candidates];
+      // 2차: 본인 풀이 0건일 때만 다른 outfit에서 빌리되, 색 매칭 우선 정렬
+      if (candidates.length === 0) {
+        const merged = [];
         result.outfits.forEach((_, other) => {
           if (other !== oi) merged.push(...(slotMap[`${other}-${slot}`] || []));
         });
         const seen = new Set();
-        candidates = merged.filter((c) => {
+        const uniqueMerged = merged.filter((c) => {
           if (!c.product_url || seen.has(c.product_url)) return false;
           seen.add(c.product_url);
           return true;
         });
+        const intendedColor = item.color || '';
+        uniqueMerged.sort((a, b) => colorMatchScore(a.name, intendedColor) - colorMatchScore(b.name, intendedColor));
+        candidates = uniqueMerged;
       }
       const validCandidates = candidates.filter((c) => c.image_url && /^https?:\/\//.test(c.image_url));
       const pool = validCandidates.length > 0 ? validCandidates : candidates;
-      const idx = pool.length > 0 ? oi % pool.length : 0;
-      const picked = pool[idx];
-      // 이미지 로드 실패 시 cascade할 backup URLs (같은 슬롯의 다른 후보 4개까지)
+      const picked = pool[0];
+      // 이미지 로드 실패 시 cascade할 backup URLs (다음 후보 4개까지)
       const altImages = pool
-        .filter((_, i) => i !== idx)
-        .slice(0, 4)
+        .slice(1, 5)
         .map((c) => c.image_url)
         .filter((u) => u && /^https?:\/\//.test(u));
       if (picked) {
