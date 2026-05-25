@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Sparkles, ArrowRight, ArrowLeft, ShoppingBag, Loader2, RefreshCw, X, Info, ExternalLink, Search, ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import { MANUAL_TRENDS } from './trends';
 
 // ─────────────────────────────────────────────────────────────
 // ClothesAi v7 · Vercel 배포 가능 버전
@@ -108,7 +109,27 @@ const SAMPLE_PROMPTS = [
 // 이제: fetch(`${WORKER_URL}/ai`, ...) → Worker 프록시 경유 → Vercel 배포 OK
 // ─────────────────────────────────────────────────────────────
 
-const callAI = async (profile, styleQuery) => {
+// 하이브리드 트렌드 블록 — 수동 큐레이션 + DataLab 자동 시그널
+const buildTrendBlock = (trends) => {
+  const lines = [];
+  if (MANUAL_TRENDS.length > 0) {
+    lines.push('[큐레이터 노트 (수동)]');
+    MANUAL_TRENDS.forEach((t) => lines.push(`- ${t}`));
+  }
+  const hot = trends?.hot || [];
+  const rising = trends?.rising || [];
+  if (hot.length || rising.length) {
+    lines.push('[Naver 검색량 시그널 (자동)]');
+    if (hot.length) lines.push(`- 최근 2주 검색량 상위: ${hot.join(', ')}`);
+    if (rising.length) lines.push(`- 빠르게 뜨는 중: ${rising.join(', ')}`);
+  }
+  if (lines.length === 0) return '';
+  return `\n## 현재 시즌 트렌드 메타 (가이드)\n${lines.join('\n')}\n위 트렌드 결을 자연스럽게 반영하되, 사용자 요청·체형·예산을 최우선.\n`;
+};
+
+const callAI = async (profile, styleQuery, trends) => {
+  const trendBlock = buildTrendBlock(trends);
+
   const prompt = `너는 한국 20대 패션 큐레이터다. 사용자의 추상적 스타일 표현을 해석해, 네이버 쇼핑에서 실제 검색 가능한 한국어 키워드로 변환한다.
 
 ## 사용자 프로필
@@ -118,7 +139,7 @@ const callAI = async (profile, styleQuery) => {
 - 체형: ${profile.bodyType}
 - 예산: ${profile.budget}만원
 - 싫어하는 스타일: ${profile.dislikes || '없음'}
-
+${trendBlock}
 ## 사용자 입력
 "${styleQuery}"
 
@@ -506,8 +527,20 @@ function ChatView() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingPhase, setLoadingPhase] = useState(0);
+  // /api/trends 결과 — 못 가져오면 null로 두고 manual 트렌드만 사용
+  const [trends, setTrends] = useState(null);
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
+
+  // 마운트 시 한 번만 트렌드 시그널 가져오기. 실패해도 무시 — manual block이 백업.
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/trends')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (alive && data) setTrends(data); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   useEffect(() => {
     if (!loading) { setLoadingPhase(0); return; }
@@ -545,7 +578,7 @@ function ChatView() {
   const generateLookbook = async (text, nextProfile) => {
     setLoading(true);
     try {
-      const data = await callAI(nextProfile, text);
+      const data = await callAI(nextProfile, text, trends);
       await delay(300);
       appendAi(
         { type: 'text', content: `'${data.mood_label}' 무드로 골라봤어요. 마음에 드는 한 벌이 있길!` },
