@@ -354,10 +354,12 @@ async function searchNaver(query, display, sort, slot = 'default', gender = null
   let mallFiltered = externalOnly.filter((item) => item._mall_tier === 1 || item._mall_tier === 3);
   if (mallFiltered.length < 2) mallFiltered = externalOnly.filter((item) => item._mall_tier <= 3);
 
-  // 4차 필터 — 슬롯 엄격 매칭 (안전장치 X · 모자엔 모자만 · 셔츠 들어오면 안 됨)
-  // _matches_slot: 카테고리/이름에 본인 슬롯 어휘 포함
-  // !_looks_other_slot: 이름에 다른 슬롯 어휘 강하게 보이면 배제 (e.g. bottom에 "셔츠" 단어)
-  const categoryFiltered = mallFiltered.filter((item) => item._matches_slot && !item._looks_other_slot);
+  // 4차 필터 — 슬롯 매칭. _looks_other_slot은 절대 유지(셔츠가 모자에 들어가는 사고 차단),
+  // _matches_slot만 안전장치 — 너무 빡세서 0건되면 풀어줌
+  let categoryFiltered = mallFiltered.filter((item) => item._matches_slot && !item._looks_other_slot);
+  if (categoryFiltered.length < 2) {
+    categoryFiltered = mallFiltered.filter((item) => !item._looks_other_slot);
+  }
 
   // 5차 필터 — 성별 위반 제거
   let genderFiltered = categoryFiltered.filter((item) => !item._violates_gender);
