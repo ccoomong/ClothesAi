@@ -919,7 +919,9 @@ function ChatView() {
         </div>
         <div className="leading-tight flex-1">
           <div className="font-display italic text-base" style={{ color: 'var(--ink)', fontWeight: 500 }}>Clo</div>
-          <div className="font-body text-[10px] tracking-[0.15em] uppercase" style={{ color: 'var(--muted)' }}>ClothesAi · Assistant</div>
+          <div className="font-body text-[10px] tracking-[0.15em] uppercase" style={{ color: 'var(--muted)' }}>
+            ClothesAi · Assistant · <span style={{ fontFamily: 'monospace', letterSpacing: 0 }}>v.{__APP_VERSION__}</span>
+          </div>
         </div>
         <button onClick={restart} disabled={loading} className="btn-press font-body text-[10px] tracking-[0.15em] uppercase px-3 py-1.5" style={{ color: 'var(--muted)', border: '1px solid var(--line)', borderRadius: 999 }}>
           <RefreshCw size={11} className="inline mr-1" /> 처음으로
