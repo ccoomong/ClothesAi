@@ -263,10 +263,15 @@ async function callNaverApi(query, display, sort) {
 }
 
 async function searchNaver(query, display, sort, slot = 'default', gender = null) {
-  // 8B LLM이 프롬프트 "2단어 규칙"을 가끔 무시하고 좁은 검색어 만듦 → 자동 단순화
-  // 첫 2 토큰만 사용 ([성별]+[카테고리]). 셀렉트샵엔 색상별 SKU가 빈약해 0건 위험.
+  // LLM(8B)은 색상 토큰을 자주 무시하지 못해 좁은 검색어 만듦 → 결과 0건 빈박스의 주범.
+  // 정책: backend가 [성별 + 슬롯 카테고리]로 강제. 색·mood 매칭은 LLM 큐레이션이 사후 픽.
+  // 슬롯 카테고리에서 검출 가능하면 LLM이 만든 카테고리 토큰을 우선 사용, 못 찾으면 일반어.
   const tokens = (query || '').split(/\s+/).filter(Boolean);
-  const baseQuery = tokens.length > 2 ? tokens.slice(0, 2).join(' ') : query;
+  const allowed = SLOT_CATEGORIES[slot] || [];
+  const catFromQuery = tokens.find((t) => allowed.some((kw) => t.includes(kw)));
+  const slotCat = catFromQuery || allowed[0] || '';
+  const genderTok = gender || tokens.find((t) => /남성|여성|남자|여자/.test(t)) || '';
+  const baseQuery = slotCat ? `${genderTok} ${slotCat}`.trim() : (query || '');
 
   let data = await callNaverApi(baseQuery, display, sort);
   let usedQuery = baseQuery;
