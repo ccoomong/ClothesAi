@@ -314,11 +314,19 @@ mood_label과 검색어는 **이 토큰들에서 직접 파생**되어야 한다
   }
 
   // ─── 2단계 — Worker /batch-search로 12개 검색어 동시 질의 ───
+  // LLM이 일부 슬롯의 search_keyword를 누락해도 default 카테고리어로 자동 채워 항상 검색.
+  const DEFAULT_SLOT_CAT = { hat: '모자', top: '셔츠', bottom: '바지', shoes: '신발' };
   const queries = [];
   result.outfits.forEach((outfit, oi) => {
+    if (!outfit.items) outfit.items = {};
     ['hat', 'top', 'bottom', 'shoes'].forEach((slot) => {
-      const item = outfit.items[slot];
-      if (!item || !item.search_keyword) return;
+      let item = outfit.items[slot];
+      if (!item) {
+        item = outfit.items[slot] = {};
+      }
+      if (!item.search_keyword) {
+        item.search_keyword = `${profile.gender || '남성'} ${DEFAULT_SLOT_CAT[slot]}`;
+      }
       queries.push({
         slot: `${oi}-${slot}`,
         keyword: item.search_keyword,
