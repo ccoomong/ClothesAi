@@ -13,7 +13,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://clothes-ai-seven.vercel.app',
+        target: 'https://clothes-ai-three.vercel.app',
         changeOrigin: true,
         secure: true,
       },
