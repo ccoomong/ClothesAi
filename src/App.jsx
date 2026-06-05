@@ -455,6 +455,34 @@ JSON만:
     outfit.total_price = totalPrice > 0 ? `${totalPrice.toLocaleString()}원` : '';
   });
 
+  // ─── 4단계 — outfit별 모델 일러스트 생성 (gpt-image-1) ───
+  // 각 outfit의 4-아이템 정보를 prompt로 만들어 모델이 입은 일러스트 1장씩 생성. 병렬.
+  // 실패해도 silent (모델 이미지만 없고 누끼 상품은 그대로 표시됨).
+  try {
+    await Promise.all(result.outfits.map(async (outfit) => {
+      const itemsDesc = ['hat', 'top', 'bottom', 'shoes']
+        .map((slot) => outfit.items?.[slot]?.name ? `${slot}: ${outfit.items[slot].name.slice(0, 50)}` : null)
+        .filter(Boolean)
+        .join(', ');
+      const prompt = `한국 20대 남성 패션 일러스트, 깔끔한 흰 배경, 단정한 만화풍 스타일, 정면 풀샷, 모델이 다음 아이템을 자연스럽게 코디한 모습: ${itemsDesc}. 컨셉: ${outfit.title || ''} · ${outfit.concept || ''}. ${profile.gender === '여성' ? '여성' : '남성'} 모델, 키 ${profile.height || 175}cm 체형 ${profile.bodyType || '보통'}.`;
+      try {
+        const imgResp = await fetch('/api/image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, size: '1024x1024', quality: 'medium' }),
+        });
+        if (imgResp.ok) {
+          const imgData = await imgResp.json();
+          if (imgData.data_url) outfit.model_image = imgData.data_url;
+        }
+      } catch (e) {
+        console.warn('[image] outfit 일러스트 생성 실패:', e.message);
+      }
+    }));
+  } catch (e) {
+    console.warn('[image] Promise.all 에러:', e.message);
+  }
+
   return result;
 };
 
@@ -1378,44 +1406,59 @@ function LookbookCard({ outfit, index, total, onRegenerate, regenerating }) {
       </div>
 
       <div className="relative pt-32 pb-6 px-4">
-        <div className="flex flex-col items-center" style={{ gap: 0 }}>
-          {outfit.items.hat && (
-            <a href={outfit.items.hat.product_url} target="_blank" rel="noopener noreferrer"
-              className="product-shadow btn-press relative group cursor-pointer"
-              style={{ width: 140, height: 110, marginBottom: -8, zIndex: 4 }}>
-              <ProductImage item={outfit.items.hat} slot="hat" alt={outfit.items.hat.name}
-                className="w-full h-full" style={{ background: 'transparent' }} />
-              <HoverPreview item={outfit.items.hat} slot="hat" />
-            </a>
-          )}
-          {outfit.items.top && (
-            <a href={outfit.items.top.product_url} target="_blank" rel="noopener noreferrer"
-              className="product-shadow btn-press relative group cursor-pointer"
-              style={{ width: 240, height: 240, marginBottom: -16, zIndex: 3 }}>
-              <ProductImage item={outfit.items.top} slot="top" alt={outfit.items.top.name}
-                className="w-full h-full" style={{ background: 'transparent' }} />
-              <HoverPreview item={outfit.items.top} slot="top" />
-            </a>
-          )}
-          {outfit.items.bottom && (
-            <a href={outfit.items.bottom.product_url} target="_blank" rel="noopener noreferrer"
-              className="product-shadow btn-press relative group cursor-pointer"
-              style={{ width: 220, height: 260, marginBottom: -12, zIndex: 2 }}>
-              <ProductImage item={outfit.items.bottom} slot="bottom" alt={outfit.items.bottom.name}
-                className="w-full h-full" style={{ background: 'transparent' }} />
-              <HoverPreview item={outfit.items.bottom} slot="bottom" />
-            </a>
-          )}
-          {outfit.items.shoes && (
-            <a href={outfit.items.shoes.product_url} target="_blank" rel="noopener noreferrer"
-              className="product-shadow btn-press relative group cursor-pointer"
-              style={{ width: 160, height: 110, zIndex: 1 }}>
-              <ProductImage item={outfit.items.shoes} slot="shoes" alt={outfit.items.shoes.name}
-                className="w-full h-full" style={{ background: 'transparent' }} />
-              <HoverPreview item={outfit.items.shoes} slot="shoes" />
-            </a>
-          )}
-        </div>
+        {outfit.model_image ? (
+          /* 메인: AI 생성 모델 일러스트 (gpt-image-1) */
+          <div className="flex justify-center">
+            <div className="product-shadow" style={{ maxWidth: 380, width: '100%' }}>
+              <img
+                src={outfit.model_image}
+                alt={outfit.title || ''}
+                style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 8 }}
+                loading="lazy"
+              />
+            </div>
+          </div>
+        ) : (
+          /* 폴백: 기존 4-아이템 누끼 세로 스택 */
+          <div className="flex flex-col items-center" style={{ gap: 0 }}>
+            {outfit.items.hat && (
+              <a href={outfit.items.hat.product_url} target="_blank" rel="noopener noreferrer"
+                className="product-shadow btn-press relative group cursor-pointer"
+                style={{ width: 140, height: 110, marginBottom: -8, zIndex: 4 }}>
+                <ProductImage item={outfit.items.hat} slot="hat" alt={outfit.items.hat.name}
+                  className="w-full h-full" style={{ background: 'transparent' }} />
+                <HoverPreview item={outfit.items.hat} slot="hat" />
+              </a>
+            )}
+            {outfit.items.top && (
+              <a href={outfit.items.top.product_url} target="_blank" rel="noopener noreferrer"
+                className="product-shadow btn-press relative group cursor-pointer"
+                style={{ width: 240, height: 240, marginBottom: -16, zIndex: 3 }}>
+                <ProductImage item={outfit.items.top} slot="top" alt={outfit.items.top.name}
+                  className="w-full h-full" style={{ background: 'transparent' }} />
+                <HoverPreview item={outfit.items.top} slot="top" />
+              </a>
+            )}
+            {outfit.items.bottom && (
+              <a href={outfit.items.bottom.product_url} target="_blank" rel="noopener noreferrer"
+                className="product-shadow btn-press relative group cursor-pointer"
+                style={{ width: 220, height: 260, marginBottom: -12, zIndex: 2 }}>
+                <ProductImage item={outfit.items.bottom} slot="bottom" alt={outfit.items.bottom.name}
+                  className="w-full h-full" style={{ background: 'transparent' }} />
+                <HoverPreview item={outfit.items.bottom} slot="bottom" />
+              </a>
+            )}
+            {outfit.items.shoes && (
+              <a href={outfit.items.shoes.product_url} target="_blank" rel="noopener noreferrer"
+                className="product-shadow btn-press relative group cursor-pointer"
+                style={{ width: 160, height: 110, zIndex: 1 }}>
+                <ProductImage item={outfit.items.shoes} slot="shoes" alt={outfit.items.shoes.name}
+                  className="w-full h-full" style={{ background: 'transparent' }} />
+                <HoverPreview item={outfit.items.shoes} slot="shoes" />
+              </a>
+            )}
+          </div>
+        )}
 
         <div className="mt-6 space-y-2">
           {items.map(({ slot, item }) => (
