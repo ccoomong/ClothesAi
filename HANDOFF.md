@@ -1,4 +1,24 @@
-# ClothesAi — 인계 문서 (2026-05-14 기준)
+# ClothesAi — 인계 문서 (2026-06-27 갱신)
+
+## 0. 최신 상태 (2026-06-27) — 먼저 읽어라
+
+> 두 기계(윈도우/맥)에서 번갈아 작업 중. **작업 시작 전 `git pull --rebase`, 끝나면 push.** 같은 파일 동시 편집 금지.
+
+**라이브 도메인: https://clothes-ai-three.vercel.app** (← 이게 진짜. `clothes-ai-seven`은 OpenAI 키 없는 옛 배포니 테스트 금지.)
+
+**AI 백본 (현재):** OpenAI `gpt-4o-mini`(채팅·큐레이션) + `gpt-image-1`(코디별 모델 일러스트). 키 없으면 Groq Llama로 폴백. 비전 분류는 여전히 Groq Llama 4 Scout.
+
+**로컬 개발:** `vite.config.js`가 `/api/*`를 clothes-ai-three로 프록시 → **로컬에 키 불필요**. `npm install && npm run dev`만. `.env` 만들지 말 것.
+
+**방금 고쳐서 푸시한 것 (최신 main, 검증 완료):**
+1. 룩북에서 신발만 뜨고 상의/하의/모자가 사라지던 문제 → `batch-search.js`: 필터가 슬롯을 0개로 깎으면 단계적으로 풀어 이미지 있는 후보를 항상 확보(`final` 폴백 cascade). **이 로직 깨지 말 것.**
+2. 모델 일러스트 머리·발 잘리고 배경 있던 문제 → 전신(1024×1536) + `background:transparent`(인물만 단독 PNG) + "머리끝~발끝 안 잘리게" 프롬프트. `api/image.js`에 `background` 파라미터 추가됨.
+
+**다음 할 일:** 모델 일러스트 옆/주변에 실제 상품 누끼 + 점선 라벨을 붙여 "이 룩의 구성 아이템"을 한눈에 보여주는 잡지 룩북형 레이아웃. 지금은 일러스트가 메인, 그 아래 상품 가격 카드 리스트 구조. 시작 전 `src/App.jsx`의 `LookbookCard` 읽고 붙일 방식 먼저 제안할 것.
+
+**디버깅 원칙:** 추측 말고 라이브 API를 직접 curl로 찔러 어디서 깨지는지 확인. `/api/ai` 응답 id가 `openai-...`면 정상, `groq-...`면 OpenAI 키 폴백 상태.
+
+---
 
 ## 1. 팀
 
@@ -16,9 +36,9 @@
 |------|---|
 | 로컬 작업 폴더 | `C:\Users\<유저>\projects\clothesai` (각자 컴퓨터에 clone) |
 | GitHub | https://github.com/limjunwoo04/ClothesAi |
-| Vercel 라이브 | https://clothes-ai-seven.vercel.app |
+| Vercel 라이브 | https://clothes-ai-three.vercel.app |
 | 배포 | GitHub push → Vercel 자동 1~2분 |
-| 환경변수 (Vercel) | `GROQ_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` — **절대 코드에 직접 적지 말 것**, `process.env`로만 참조 |
+| 환경변수 (Vercel) | `OPENAI_API_KEY`, `GROQ_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` — **절대 코드에 직접 적지 말 것**, `process.env`로만 참조 |
 
 ## 4. 기술 스택
 
