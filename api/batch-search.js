@@ -262,6 +262,30 @@ async function callNaverApi(query, display, sort) {
   return response.json();
 }
 
+// 하이브리드 검색 쿼리 생성 함수
+function generateSearchVariants(baseQuery, query, slot, gender) {
+  const tokens = (query || '').split(/\s+/).filter(Boolean);
+  const allowed = SLOT_CATEGORIES[slot] || [];
+  const slotCat = tokens.find((t) => allowed.some((kw) => t.includes(kw))) || allowed[0] || '';
+  const genderTok = gender || tokens.find((t) => /남성|여성|남자|여자/.test(t)) || '';
+
+  const variants = [
+    baseQuery, // 1순위: 기본
+  ];
+
+  // 2순위: 무신사 필터링 (신뢰할 수 있는 큐레이션몰)
+  if (baseQuery && !baseQuery.includes('무신사')) {
+    variants.push(`${baseQuery} 무신사`.trim());
+  }
+
+  // 3순위: 슬롯만 (카테고리 단순화 - 결과 수 증가)
+  if (slotCat && !baseQuery.includes(slotCat)) {
+    variants.push(`${genderTok} ${slotCat}`.trim());
+  }
+
+  return variants.filter((v, i, a) => a.indexOf(v) === i && v.length > 0); // 중복 제거
+}
+
 async function searchNaver(query, display, sort, slot = 'default', gender = null) {
   // LLM(8B)은 색상 토큰을 자주 무시하지 못해 좁은 검색어 만듦 → 결과 0건 빈박스의 주범.
   // 정책: backend가 [성별 + 슬롯 카테고리]로 강제. 색·mood 매칭은 LLM 큐레이션이 사후 픽.
@@ -273,25 +297,30 @@ async function searchNaver(query, display, sort, slot = 'default', gender = null
   const genderTok = gender || tokens.find((t) => /남성|여성|남자|여자/.test(t)) || '';
   const baseQuery = slotCat ? `${genderTok} ${slotCat}`.trim() : (query || '');
 
-  let data = await callNaverApi(baseQuery, display, sort);
-  let usedQuery = baseQuery;
+  // 🆕 하이브리드 쿼리 생성 — 여러 변형 쿼리를 병렬로 검색
+  const variants = generateSearchVariants(baseQuery, query, slot, gender);
+  const variantResults = await Promise.all(
+    variants.map((q) =>
+      callNaverApi(q, display, sort)
+        .then((d) => ({ items: d.items || [], query: q }))
+        .catch(() => ({ items: [], query: q }))
+    )
+  );
 
-  if (!data.items || data.items.length === 0) {
-    const tokens = query.split(/\s+/).filter(Boolean);
-    if (tokens.length > 2) {
-      const shorterQuery = tokens.slice(0, -1).join(' ');
-      data = await callNaverApi(shorterQuery, display, sort);
-      usedQuery = shorterQuery;
+  // 결과 병합 — 중복 제거, 1순위 쿼리부터 우선
+  const allItems = [];
+  const seen = new Set();
+  for (const result of variantResults) {
+    for (const item of result.items) {
+      if (!seen.has(item.link)) {
+        seen.add(item.link);
+        allItems.push(item);
+      }
     }
   }
 
-  if ((!data.items || data.items.length === 0) && SLOT_CATEGORIES[slot]) {
-    const genderToken = gender || '';
-    const slotToken = SLOT_CATEGORIES[slot][0];
-    const fallbackQuery = `${genderToken} ${slotToken}`.trim();
-    data = await callNaverApi(fallbackQuery, display, sort);
-    usedQuery = fallbackQuery;
-  }
+  let data = { items: allItems.slice(0, 30) };
+  let usedQuery = variants[0] || baseQuery;
 
   // 무신사 booster — 결과 안에 무신사가 3개 미만이면 "검색어 + 무신사"로 추가 검색
   const musinsaInPrimary = (data.items || []).filter((it) => /무신사|musinsa/i.test(it.mallName || ''));

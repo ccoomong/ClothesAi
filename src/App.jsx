@@ -1415,6 +1415,8 @@ function LookbookCard({ outfit, index, total, onRegenerate, regenerating }) {
       </div>
 
       <div className="relative pt-32 pb-6 px-4">
+        <div className="flex flex-col md:flex-row md:items-start gap-6 md:gap-5">
+          <div className="md:flex-1 flex justify-center">
         {outfit.model_image ? (
           /* 메인: AI 생성 모델 일러스트 (gpt-image-1) */
           <div className="flex justify-center">
@@ -1468,35 +1470,52 @@ function LookbookCard({ outfit, index, total, onRegenerate, regenerating }) {
             )}
           </div>
         )}
+          </div>
 
-        <div className="mt-6 space-y-2">
-          {items.map(({ slot, item }) => (
-            <a key={slot} href={item.product_url} target="_blank" rel="noopener noreferrer"
-              className="price-card-shadow btn-press flex items-center gap-3 px-3 py-2 bg-white block cursor-pointer hover:shadow-lg transition-shadow"
-              style={{ borderRadius: 4 }}>
-              <div className="w-12 h-12 flex-shrink-0 overflow-hidden" style={{ background: '#f5f5f5' }}>
-                <ProductImage item={item} slot={slot} alt={item.name} className="w-full h-full" />
+          {/* THE PIECES — 구성 아이템 누끼 + 점선 라벨 (잡지 무드보드 사이드 컬럼) */}
+          <div className="md:w-[42%] md:flex-shrink-0">
+            <div className="flex items-baseline justify-between mb-3">
+              <div className="font-display italic text-lg" style={{ color: 'var(--ink)', fontWeight: 500 }}>
+                The Pieces
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-body text-[10px] tracking-[0.2em] uppercase mb-0.5" style={{ color: 'var(--muted)' }}>
-                  {ITEM_LABELS[slot].ko}
-                </div>
-                <div className="font-body text-xs truncate" style={{ color: 'var(--ink)', fontWeight: 500 }}>
-                  {item.name}
-                </div>
+              <div className="font-body text-[9px] tracking-[0.3em] uppercase" style={{ color: 'var(--muted)' }}>
+                구성 아이템
               </div>
-              <div className="flex-shrink-0 text-right">
-                <div className="font-body text-sm" style={{ color: 'var(--ink)', fontWeight: 700 }}>
-                  {item.price || '가격 확인'}
+            </div>
+            <div style={{ borderTop: '1px dashed var(--ink-soft)', opacity: 0.5 }} />
+            {items.map(({ slot, item }) => (
+              <a key={slot} href={item.product_url} target="_blank" rel="noopener noreferrer"
+                className="btn-press flex items-center gap-3 py-3 cursor-pointer"
+                style={{ borderBottom: '1px dashed var(--line)' }}>
+                <div className="flex-shrink-0 flex items-center justify-center"
+                  style={{ width: 64, height: 80, background: 'transparent', border: '1px dashed var(--line)' }}>
+                  <ProductImage item={item} slot={slot} alt={item.name} className="w-full h-full" style={{ background: 'transparent' }} />
                 </div>
-                {item.is_direct_product && (
-                  <div className="font-body text-[8px] tracking-[0.15em] uppercase mt-0.5 flex items-center gap-1 justify-end" style={{ color: 'var(--accent)' }}>
-                    <ExternalLink size={8} /> {item.mall || '네이버'}
+                <div className="flex-1 min-w-0">
+                  <span className="inline-block font-body text-[9px] tracking-[0.25em] uppercase mb-1 pb-0.5"
+                    style={{ color: 'var(--accent)', borderBottom: '1px dotted var(--accent)' }}>
+                    {ITEM_LABELS[slot].ko} · {ITEM_LABELS[slot].en}
+                  </span>
+                  <div className="font-body text-xs leading-snug mb-1" style={{
+                    color: 'var(--ink)', fontWeight: 500,
+                    display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                  }}>
+                    {item.name}
                   </div>
-                )}
-              </div>
-            </a>
-          ))}
+                  <div className="flex items-center gap-2">
+                    <span className="font-body text-sm" style={{ color: 'var(--ink)', fontWeight: 700 }}>
+                      {item.price || '가격 확인'}
+                    </span>
+                    {item.is_direct_product && (
+                      <span className="font-body text-[8px] tracking-[0.15em] uppercase flex items-center gap-1" style={{ color: 'var(--muted)' }}>
+                        <ExternalLink size={8} /> {item.mall || '네이버'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </a>
+            ))}
+          </div>
         </div>
       </div>
     </div>
