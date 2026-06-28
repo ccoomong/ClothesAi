@@ -1,6 +1,30 @@
 import { useState, useEffect, useRef } from 'react';
 import { Sparkles, ArrowRight, ArrowLeft, ShoppingBag, Loader2, RefreshCw, X, Info, ExternalLink, Search, ChevronLeft, ChevronRight, Check } from 'lucide-react';
 import { MANUAL_TRENDS } from './trends';
+import { removeBackground } from '@imgly/background-removal';
+
+// 네이버 쇼핑 이미지(pstatic CDN)를 같은 origin 프록시로 변환 → 누끼 시 CORS 우회.
+// dev: vite 프록시(/np-img) / prod: Vercel 함수(/api/img-proxy)
+function toProxyUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes('pstatic.net')) {
+      if (import.meta.env.DEV) return `/np-img${u.pathname}${u.search}`;
+      return `/api/img-proxy?url=${encodeURIComponent(url)}`;
+    }
+  } catch { /* noop */ }
+  return url;
+}
+
+// 누끼 결과 캐시 — 같은 원본 URL 재처리 방지 (objectURL 공유)
+const _nukiCache = new Map();
+async function getNukiUrl(srcUrl) {
+  if (_nukiCache.has(srcUrl)) return _nukiCache.get(srcUrl);
+  const blob = await removeBackground(toProxyUrl(srcUrl));
+  const objUrl = URL.createObjectURL(blob);
+  _nukiCache.set(srcUrl, objUrl);
+  return objUrl;
+}
 
 // ─────────────────────────────────────────────────────────────
 // ClothesAi v7 · Vercel 배포 가능 버전
@@ -464,9 +488,10 @@ JSON만:
   });
 
   // ─── 4단계 — outfit별 모델 일러스트 생성 (gpt-image-1) ───
-  // 각 outfit의 4-아이템 정보를 prompt로 만들어 모델이 입은 일러스트 1장씩 생성. 병렬.
-  // 실패해도 silent (모델 이미지만 없고 누끼 상품은 그대로 표시됨).
-  try {
+  // [비활성화 2026-06] 이미지 생성 비용(장당 ~$0.04) 절감 → 누끼 상품 표시에 집중.
+  // 다시 켜려면 ENABLE_MODEL_IMAGE = true.
+  const ENABLE_MODEL_IMAGE = false;
+  if (ENABLE_MODEL_IMAGE) try {
     await Promise.all(result.outfits.map(async (outfit) => {
       const itemsDesc = ['hat', 'top', 'bottom', 'shoes']
         .map((slot) => outfit.items?.[slot]?.name ? `${slot}: ${outfit.items[slot].name.slice(0, 50)}` : null)
@@ -1282,12 +1307,26 @@ const ITEM_LABELS = {
 
 const SLOT_ORDER = ['hat', 'top', 'bottom', 'shoes'];
 
-function ProductImage({ item, slot, alt, className, style }) {
+function ProductImage({ item, slot, alt, className, style, nuki = true }) {
   const sources = getImageSources(item);
   const [sourceIdx, setSourceIdx] = useState(0);
   const [loaded, setLoaded] = useState(false);
+  const [nukiUrl, setNukiUrl] = useState(null);
+  const [nukiPending, setNukiPending] = useState(nuki);
 
   const src = sources[sourceIdx];
+
+  // 누끼 처리 — 원본 URL이 정해지면 백그라운드에서 배경 제거
+  useEffect(() => {
+    if (!nuki || !src) return;
+    let cancelled = false;
+    setNukiUrl(null);
+    setNukiPending(true);
+    getNukiUrl(src)
+      .then((u) => { if (!cancelled) { setNukiUrl(u); setNukiPending(false); } })
+      .catch(() => { if (!cancelled) setNukiPending(false); }); // 실패 시 원본 사용
+    return () => { cancelled = true; };
+  }, [src, nuki]);
 
   if (!src) {
     // 텍스트·테두리 없이 룩북 분위기에 녹는 빈 박스 (사용자 인식 최소화)
@@ -1303,23 +1342,26 @@ function ProductImage({ item, slot, alt, className, style }) {
     );
   }
 
+  const displaySrc = nukiUrl || src;
+
   return (
     <div className={className} style={{ ...style, position: 'relative', overflow: 'hidden' }}>
-      {!loaded && (
+      {(!loaded || nukiPending) && (
         <div className="absolute inset-0 image-shimmer" />
       )}
       <img
-        src={src}
+        src={displaySrc}
         alt={alt || ''}
         style={{
           width: '100%',
           height: '100%',
           objectFit: 'contain',
-          opacity: loaded ? 1 : 0,
+          opacity: loaded && !nukiPending ? 1 : 0,
           transition: 'opacity 0.3s ease',
         }}
         onLoad={() => setLoaded(true)}
         onError={() => {
+          if (nukiUrl) { setNukiUrl(null); return; } // 누끼 이미지 실패 → 원본
           setLoaded(false);
           setSourceIdx((i) => i + 1);
         }}
@@ -1430,8 +1472,8 @@ function LookbookCard({ outfit, index, total, onRegenerate, regenerating }) {
             </div>
           </div>
         ) : (
-          /* 폴백: 기존 4-아이템 누끼 세로 스택 */
-          <div className="flex flex-col items-center" style={{ gap: 0 }}>
+          /* 메인: 4-아이템 누끼 세로 스택 (image_sample식 회색 무드보드) */
+          <div className="flex flex-col items-center" style={{ gap: 0, background: '#ECECEE', borderRadius: 16, padding: '28px 16px', width: '100%' }}>
             {outfit.items.hat && (
               <a href={outfit.items.hat.product_url} target="_blank" rel="noopener noreferrer"
                 className="product-shadow btn-press relative group cursor-pointer"

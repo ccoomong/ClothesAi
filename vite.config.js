@@ -17,6 +17,13 @@ export default defineConfig({
         changeOrigin: true,
         secure: true,
       },
+      // 로컬 누끼용 — 네이버 쇼핑 이미지 CORS 우회 (dev 전용, 배포본은 별도 프록시 필요)
+      '/np-img': {
+        target: 'https://shopping-phinf.pstatic.net',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (p) => p.replace(/^\/np-img/, ''),
+      },
     },
   },
 })

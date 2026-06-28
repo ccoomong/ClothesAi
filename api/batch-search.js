@@ -207,9 +207,10 @@ JSON으로만 답하라.
 }
 
 async function rankByVisionClassification(items, slot) {
-  if (!Array.isArray(items) || items.length <= 1) return items;
-  // 슬롯당 1장만 분류 — 분당 한도 안전 (12 슬롯 × 1 = 12회 << 30회)
-  const head = items.slice(0, 1);
+  if (!Array.isArray(items) || items.length === 0) return items;
+  // 상위 N장 Vision 분류 — 단독컷(clean) 판별 강화 (12 슬롯 × 2 = 24회 < Groq 30 RPM)
+  const HEAD = 2;
+  const head = items.slice(0, HEAD);
 
   const types = await Promise.all(
     head.map((it) =>
@@ -219,24 +220,24 @@ async function rankByVisionClassification(items, slot) {
     )
   );
 
-  // 모든 호출이 실패하면 원본 그대로 (텍스트 휴리스틱 정렬 유지)
+  // 모든 호출이 실패하면 원본 그대로 (텍스트 휴리스틱 정렬 유지) — is_clean 미상은 false
   const validVerdicts = types.filter((t) => t !== null);
   if (validVerdicts.length === 0) {
     console.warn(`[Vision] all calls failed for slot ${slot} — falling back to text heuristics`);
-    return items;
+    return items.map((it) => ({ ...it, is_clean: false }));
   }
 
+  // 누끼 도입 후 정책: clean(단독컷)은 is_clean=true로 표시하고 우선 노출.
+  // model/multi도 버리지 않음 — 프론트가 착용샷도 누끼하므로 빈 슬롯 방지(사용자 1순위).
   const scored = head.map((item, i) => {
     const type = types[i] || 'unknown';
-    return { ...item, _vision_score: VISION_TYPE_SCORE[type] ?? 99, _vision_type: type };
+    return { ...item, _vision_score: VISION_TYPE_SCORE[type] ?? 99, is_clean: type === 'clean' };
   });
   scored.sort((a, b) => a._vision_score - b._vision_score);
 
-  // 누끼 우선 통과 — clean/scene만 살리고 model/multi는 컷 (안전장치: 통과 결과 부족하면 정렬만)
-  const cleanOrScene = scored.filter((item) => item._vision_type === 'clean' || item._vision_type === 'scene');
-  const survivors = cleanOrScene.length >= 1 ? cleanOrScene : scored;
-  const cleanedHead = survivors.map(({ _vision_score, _vision_type, ...rest }) => rest);
-  return [...cleanedHead, ...items.slice(1)];
+  const tail = items.slice(HEAD).map((it) => ({ ...it, is_clean: false }));
+  const cleanedHead = scored.map(({ _vision_score, ...rest }) => rest);
+  return [...cleanedHead, ...tail];
 }
 
 async function callNaverApi(query, display, sort) {
