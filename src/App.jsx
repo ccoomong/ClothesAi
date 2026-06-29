@@ -138,6 +138,26 @@ const MOOD_CHIPS = [
   '프렌치 빈티지', '캐주얼', '댄디', '스포티', 'Y2K',
 ];
 
+// 스타일 퀴즈 카드 — 고를수록 취향이 또렷해짐. 에셋(img) 들어오면 채우면 됨.
+// tone은 네이비 계열만 (보라 그라데이션 금지). 지금은 라벨 텍스트로 무드 노출.
+const QUIZ_ITEMS = [
+  { id: 'q1',  label: '미니멀',       tone: '#1B2D5C', moods: ['미니멀', '깔끔'] },
+  { id: 'q2',  label: '올드머니',     tone: '#0F1F4A', moods: ['올드머니', '클래식', '단정'] },
+  { id: 'q3',  label: '스트릿',       tone: '#2C4A8B', moods: ['스트릿', '과감'] },
+  { id: 'q4',  label: '캐주얼',       tone: '#243B6B', moods: ['캐주얼', '데일리'] },
+  { id: 'q5',  label: '꾸안꾸',       tone: '#1B2D5C', moods: ['꾸안꾸', '내추럴'] },
+  { id: 'q6',  label: '러블리',       tone: '#3A5490', moods: ['러블리', '페미닌'] },
+  { id: 'q7',  label: '고프코어',     tone: '#1A2E52', moods: ['고프코어', '아웃도어'] },
+  { id: 'q8',  label: '댄디',         tone: '#0F1F4A', moods: ['댄디', '포멀'] },
+  { id: 'q9',  label: '스포티',       tone: '#2C4A8B', moods: ['스포티', '액티브'] },
+  { id: 'q10', label: 'Y2K',          tone: '#243B6B', moods: ['Y2K', '레트로'] },
+  { id: 'q11', label: '프렌치 빈티지', tone: '#1B2D5C', moods: ['프렌치', '빈티지'] },
+  { id: 'q12', label: '워크웨어',     tone: '#1A2E52', moods: ['워크웨어', '유틸리티'] },
+];
+
+// 취향 정확도 — 고를수록 1에 수렴(30개에서 거의 포화)
+const quizConfidence = (n) => Math.min(1, Math.log(1 + n) / Math.log(1 + 30));
+
 // 성별만 받으면 나머지 프로필은 평균값으로 채워 룩북 생성 진입을 단축
 const buildDefaultProfile = (gender) => ({
   gender,
@@ -146,6 +166,8 @@ const buildDefaultProfile = (gender) => ({
   bodyType: '보통',
   budget: '30',
   dislikes: '',
+  stylePicks: [],
+  bodyShape: null,
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -217,6 +239,15 @@ const callAI = async (profile, styleQuery, trends) => {
 - 체형: ${profile.bodyType}
 - 예산: ${profile.budget}만원
 - 싫어하는 스타일: ${profile.dislikes || '없음'}
+- 취향 시그널(스타일 퀴즈): ${profile.stylePicks?.length ? profile.stylePicks.join(', ') : '없음'}
+- 체형 보완: ${profile.bodyShape ? `어깨 ${profile.bodyShape.shoulder || '보통'} · ${profile.bodyShape.torso || '균형'} · 배 ${profile.bodyShape.belly || '신경안씀'}` : '정보 없음(보통 체형 가정)'}
+
+## 체형 보완 규칙 (위 '체형 보완'에 해당하면 코디에 반영)
+- 어깨 넓은편 → V/U넥·드롭숄더 추천, 패드 셋인숄더·보트넥·가로 스트라이프 상의 회피
+- 어깨 좁은편 → 셋인숄더·보트넥·가로 디테일 추천, 깊은 V넥 회피
+- 상체 비중 → V넥·세로 분할·다크 상의+밝은 하의 추천, 볼륨/퍼프 상의·가로 스트라이프 회피
+- 하체 비중 → 상체 포인트(밝은색)·A라인·세미와이드·다크 하의 추천, 스키니 단독·밝은 하의·크롭 하의 회피
+- 배 커버 → 하이웨이스트·살짝 여유 상의·A라인 추천, 크롭탑·타이트 니트·로우라이즈 회피
 
 ## 사용자 입력
 "${styleQuery}"
@@ -686,7 +717,7 @@ function ProfileForm({ profile, setProfile, onNext, onBack }) {
   );
 }
 
-const INITIAL_PROFILE = { gender: '', age: '', height: '', bodyType: '', budget: '', dislikes: '' };
+const INITIAL_PROFILE = { gender: '', age: '', height: '', bodyType: '', budget: '', dislikes: '', stylePicks: [], bodyShape: null };
 const INITIAL_MESSAGES = [
   { role: 'ai', type: 'text', content: '안녕하세요, 클로예요.\n어떤 자리·무드로 코디 짜드릴까요?\n칩 골라주시면 빠르게, 더 적고 싶으면 자유롭게 적어주세요.' },
   { role: 'ai', type: 'stylePicker' },
@@ -786,6 +817,89 @@ function StylePicker({ onSubmit, disabled }) {
   );
 }
 
+// 스타일 퀴즈 — 끌리는 이미지를 토글로 고른다. 고를수록 정확(미터), 최대 50, 5개 미만은 건너뛰기.
+function StyleQuiz({ items, onSubmit, disabled }) {
+  const MAX = 50;
+  const [picked, setPicked] = useState([]);
+  const n = picked.length;
+  const conf = quizConfidence(n);
+  const atMax = n >= MAX;
+
+  const toggle = (id) => {
+    if (disabled) return;
+    setPicked((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= MAX) return prev;
+      if (navigator.vibrate) navigator.vibrate(10);
+      return [...prev, id];
+    });
+  };
+
+  const submit = () => {
+    if (disabled) return;
+    const moods = [...new Set(picked.flatMap((id) => items.find((it) => it.id === id)?.moods || []))];
+    onSubmit(moods);
+  };
+
+  const milestone =
+    n >= 30 ? '이제 거의 완벽해요' :
+    n >= 15 ? '꽤 또렷해졌어요' :
+    n >= 5  ? '취향이 보이기 시작했어요' :
+    '고를수록 취향이 또렷해져요';
+
+  return (
+    <div className="fade-in" style={{ padding: 16, background: '#F4F6FA', borderRadius: 18, borderTopLeftRadius: 4, maxWidth: '92%', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div>
+        <div className="font-body text-xs" style={{ color: 'var(--ink)', fontWeight: 600 }}>끌리는 스타일을 골라주세요</div>
+        <div className="font-body text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>{milestone}</div>
+      </div>
+      <div>
+        <div style={{ height: 4, borderRadius: 2, background: '#E5EAF2', overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${Math.round(conf * 100)}%`, background: 'var(--ink)', transition: 'width 0.3s' }} />
+        </div>
+        <div className="font-body text-[10px] mt-1" style={{ color: 'var(--muted)' }}>{n}개 선택됨{atMax ? ' · 최대 50개까지예요' : ''}</div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        {items.map((it) => {
+          const active = picked.includes(it.id);
+          const lock = !active && atMax;
+          return (
+            <button key={it.id} type="button" disabled={disabled || lock} onClick={() => toggle(it.id)}
+              className="btn-press" style={{ position: 'relative', aspectRatio: '3/4', borderRadius: 12, overflow: 'hidden', border: `2px solid ${active ? 'var(--ink)' : 'transparent'}`, background: it.tone, opacity: lock ? 0.4 : 1, transform: active ? 'scale(0.97)' : 'none', transition: 'transform 0.15s' }}>
+              {it.img
+                ? <img src={it.img} alt={it.label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                : <div className="font-body" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 500 }}>{it.label}</div>}
+              {active && <div style={{ position: 'absolute', top: 6, right: 6, width: 20, height: 20, borderRadius: '50%', background: 'var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Check size={12} color="#fff" /></div>}
+            </button>
+          );
+        })}
+      </div>
+      <button type="button" onClick={submit} disabled={disabled}
+        className="btn-press font-body text-xs tracking-[0.15em] uppercase"
+        style={{ padding: '12px 16px', borderRadius: 12, background: n >= 5 ? 'var(--ink)' : '#FFFFFF', color: n >= 5 ? '#FFFFFF' : 'var(--muted)', border: n >= 5 ? 'none' : '1px solid var(--line)' }}>
+        {n >= 5 ? `분석 시작 (${n}개)` : '건너뛰기'}
+      </button>
+    </div>
+  );
+}
+
+// 체형 입력 — 정성 3축(어깨/상하체/배). 전부 선택, 건너뛰기 가능.
+function BodyShapeForm({ value, onChange, onSubmit, disabled }) {
+  const set = (k, v) => onChange({ ...value, [k]: v });
+  return (
+    <div className="fade-in" style={{ padding: 16, background: '#F4F6FA', borderRadius: 18, borderTopLeftRadius: 4, maxWidth: '90%', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div className="font-body text-xs" style={{ color: 'var(--ink)', fontWeight: 600 }}>체형을 알려주시면 더 잘 맞게 보완해드려요 (선택)</div>
+      <StyleChipRow label="어깨" items={['좁은편', '보통', '넓은편']} value={value.shoulder} onPick={(v) => set('shoulder', v)} disabled={disabled} />
+      <StyleChipRow label="상하체 비중" items={['상체 비중', '균형', '하체 비중']} value={value.torso} onPick={(v) => set('torso', v)} disabled={disabled} />
+      <StyleChipRow label="배" items={['신경 안 씀', '커버하고 싶음']} value={value.belly} onPick={(v) => set('belly', v)} disabled={disabled} />
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button type="button" onClick={() => onSubmit(value)} disabled={disabled} className="btn-press font-body text-xs tracking-[0.15em] uppercase" style={{ flex: 1, padding: '12px 16px', borderRadius: 12, background: 'var(--ink)', color: '#FFFFFF' }}>이 체형으로 코디 받기</button>
+        <button type="button" onClick={() => onSubmit(null)} disabled={disabled} className="btn-press font-body text-xs tracking-[0.15em] uppercase" style={{ padding: '12px 16px', borderRadius: 12, background: '#FFFFFF', color: 'var(--muted)', border: '1px solid var(--line)' }}>건너뛰기</button>
+      </div>
+    </div>
+  );
+}
+
 const LOADING_PHASES = [
   '스타일 표현 분석 중',
   '톤과 색감 잡는 중',
@@ -798,8 +912,9 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 function ChatView() {
   const [messages, setMessages] = useState(INITIAL_MESSAGES);
   const [profile, setProfile] = useState(INITIAL_PROFILE);
-  // 0: 스타일(StylePicker) → 1: 성별 → 2+: 자유 대화 (룩북 이후 변형 요청)
+  // 0: 스타일 → 1: 성별 → 2: 스타일 퀴즈 → 3: 체형 → 4+: 자유 대화
   const [stage, setStage] = useState(0);
+  const [bodyShape, setBodyShape] = useState({ shoulder: '', torso: '', belly: '' });
   const [styleQuery, setStyleQuery] = useState('');
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -842,7 +957,7 @@ function ChatView() {
   // 자유 입력이 필요한 단계(룩북 이후 자유 대화)에선 자동으로 포커스
   useEffect(() => {
     if (loading) return;
-    if (stage >= 2 && inputRef.current) {
+    if (stage >= 4 && inputRef.current) {
       const t = setTimeout(() => inputRef.current?.focus(), 120);
       return () => clearTimeout(t);
     }
@@ -850,7 +965,7 @@ function ChatView() {
 
   const appendAi = (...items) => setMessages((prev) => [...prev, ...items.map((it) => ({ role: 'ai', ...it }))]);
   const appendUser = (text) => setMessages((prev) => [
-    ...prev.filter((m) => m.type !== 'quickReplies' && m.type !== 'stylePicker'),
+    ...prev.filter((m) => !['quickReplies', 'stylePicker', 'styleQuiz', 'bodyShape'].includes(m.type)),
     { role: 'user', type: 'text', content: text },
   ]);
 
@@ -906,6 +1021,30 @@ function ChatView() {
     );
   };
 
+  // 스타일 퀴즈 제출 — 고른 무드 태그를 프로필에 저장하고 체형 단계로
+  const handleQuizSubmit = async (moods) => {
+    if (loading || stage !== 2) return;
+    setProfile((p) => ({ ...p, stylePicks: moods }));
+    appendUser(moods.length ? `취향: ${moods.slice(0, 6).join(', ')}${moods.length > 6 ? ' 외' : ''}` : '취향 퀴즈 건너뛰기');
+    setStage(3);
+    await delay(300);
+    appendAi(
+      { type: 'text', content: '마지막으로, 체형을 알려주시면 더 잘 맞게 보완해드려요.' },
+      { type: 'bodyShape' },
+    );
+  };
+
+  // 체형 제출 — 비어있으면 null(보통 체형). 룩북 생성으로
+  const handleBodySubmit = async (shape) => {
+    if (loading || stage !== 3) return;
+    const filled = shape && (shape.shoulder || shape.torso || shape.belly);
+    const next = { ...profile, bodyShape: filled ? shape : null };
+    setProfile(next);
+    appendUser(filled ? `체형: 어깨 ${shape.shoulder || '보통'} · ${shape.torso || '균형'} · 배 ${shape.belly || '신경안씀'}` : '체형 입력 건너뛰기');
+    setStage(4);
+    await generateLookbook(styleQuery, next);
+  };
+
   // StylePicker 칩 제출 — 화면에 사용자 메시지 찍고 다음 단계
   const handleStylePick = async (text) => {
     const userText = (text || '').trim();
@@ -940,11 +1079,18 @@ function ChatView() {
       const next = buildDefaultProfile(userText);
       setProfile(next);
       setStage(2);
-      await generateLookbook(styleQuery, next);
+      await delay(350);
+      appendAi(
+        { type: 'text', content: '취향을 더 정확히 잡을게요. 끌리는 이미지를 골라주세요.' },
+        { type: 'styleQuiz' },
+      );
       return;
     }
 
-    // stage 2+: 자유 대화 — 입력한 표현으로 새 룩북 생성
+    // stage 2·3은 위젯(퀴즈·체형)으로만 진행 — 자유 입력 무시
+    if (stage === 2 || stage === 3) return;
+
+    // stage 4+: 자유 대화 — 입력한 표현으로 새 룩북 생성
     setStyleQuery(userText);
     await generateLookbook(userText, profile);
   };
@@ -964,12 +1110,15 @@ function ChatView() {
     setInput('');
     setLoading(false);
     setRegenInfo(null);
+    setBodyShape({ shoulder: '', torso: '', belly: '' });
   };
 
   const placeholder = (() => {
     if (loading) return 'Clo가 답하는 중…';
     if (stage === 0) return '위 칩을 골라주세요 (또는 자유롭게 적기)';
     if (stage === 1) return '성별 버튼을 눌러주세요';
+    if (stage === 2) return '위에서 끌리는 스타일을 골라주세요';
+    if (stage === 3) return '위에서 체형을 골라주세요';
     return '바꾸고 싶은 표현을 적어주세요 (예: 더 캐주얼하게)';
   })();
 
@@ -1036,6 +1185,20 @@ function ChatView() {
               </div>
             );
           }
+          if (msg.type === 'styleQuiz') {
+            return (
+              <div key={i} className="flex justify-start fade-in">
+                <StyleQuiz items={QUIZ_ITEMS} onSubmit={handleQuizSubmit} disabled={stage !== 2 || loading} />
+              </div>
+            );
+          }
+          if (msg.type === 'bodyShape') {
+            return (
+              <div key={i} className="flex justify-start fade-in">
+                <BodyShapeForm value={bodyShape} onChange={setBodyShape} onSubmit={handleBodySubmit} disabled={stage !== 3 || loading} />
+              </div>
+            );
+          }
           if (msg.type === 'lookbook') {
             return (
               <div key={i} data-lookbook="true" className="fade-in" style={{ padding: '4px 0' }}>
@@ -1082,7 +1245,7 @@ function ChatView() {
             onKeyDown={handleKey}
             placeholder={placeholder}
             rows={1}
-            disabled={loading}
+            disabled={loading || stage === 2 || stage === 3}
             className="flex-1 font-body"
             style={{
               padding: '12px 16px',
