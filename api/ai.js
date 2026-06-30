@@ -21,72 +21,78 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'messages 배열이 필요합니다' });
   }
 
-  const useOpenAI = !!openaiKey;
-  const endpoint = useOpenAI
-    ? 'https://api.openai.com/v1/chat/completions'
-    : 'https://api.groq.com/openai/v1/chat/completions';
-  const apiKey = useOpenAI ? openaiKey : groqKey;
-  const model = useOpenAI ? 'gpt-4o-mini' : 'llama-3.1-8b-instant';
+  const normMessages = messages.map((m) => ({
+    role: m.role === 'assistant' ? 'assistant' : 'user',
+    content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+  }));
 
-  const payload = {
-    model,
-    messages: messages.map((m) => ({
-      role: m.role === 'assistant' ? 'assistant' : 'user',
-      content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-    })),
-    max_tokens,
-    temperature: 0.7,
-    response_format: { type: 'json_object' },
+  // 프로바이더 우선순위: Groq(무료·llama-3.3-70b, 똑똑함) 우선 → 실패 시 OpenAI 폴백.
+  // OpenAI 한도/장애가 나도 추천이 죽지 않게 자동 우회.
+  const providers = [];
+  if (groqKey) {
+    providers.push({ name: 'groq', endpoint: 'https://api.groq.com/openai/v1/chat/completions', apiKey: groqKey, model: 'llama-3.3-70b-versatile' });
+  }
+  if (openaiKey) {
+    providers.push({ name: 'openai', endpoint: 'https://api.openai.com/v1/chat/completions', apiKey: openaiKey, model: 'gpt-4o-mini' });
+  }
+
+  const callProvider = async (p) => {
+    const response = await fetch(p.endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${p.apiKey}` },
+      body: JSON.stringify({
+        model: p.model,
+        messages: normMessages,
+        max_tokens,
+        temperature: 0.7,
+        response_format: { type: 'json_object' },
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    return { ok: response.ok, status: response.status, data };
   };
 
-  try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const data = await response.json();
-    if (!response.ok) {
-      return res.status(response.status).json({
-        error: `${useOpenAI ? 'OpenAI' : 'Groq'} API 오류 (${response.status})`,
-        detail: data,
-      });
-    }
-
-    const text = data.choices?.[0]?.message?.content || '';
-
-    // 디버그 로그 — outfits 개수 + 각 슬롯 검색어
+  let last = null;
+  for (const p of providers) {
     try {
-      const parsed = JSON.parse(text);
-      const outfits = parsed.outfits || [];
-      const summary = outfits.map((o, i) => {
-        const kws = ['hat', 'top', 'bottom', 'shoes']
-          .map((s) => `${s}="${o.items?.[s]?.search_keyword || '?'}"`)
-          .join(' ');
-        return `  [${i}] title="${o.title || ''}" ${kws}`;
-      }).join('\n');
-      console.log(`[AI:${useOpenAI ? 'openai' : 'groq'}] mood="${parsed.mood_label || '?'}" outfits=${outfits.length}\n${summary}`);
-    } catch {
-      console.log(`[AI:${useOpenAI ? 'openai' : 'groq'}] JSON parse failed. Raw (first 400):`, text.slice(0, 400));
+      const r = await callProvider(p);
+      if (!r.ok) {
+        console.warn(`[AI] ${p.name} 실패 ${r.status} → 다음 프로바이더 시도`);
+        last = { p, ...r };
+        continue;
+      }
+      const text = r.data.choices?.[0]?.message?.content || '';
+      try {
+        const parsed = JSON.parse(text);
+        const outfits = parsed.outfits || [];
+        const summary = outfits.map((o, i) => {
+          const kws = ['hat', 'top', 'bottom', 'shoes'].map((s) => `${s}="${o.items?.[s]?.search_keyword || '?'}"`).join(' ');
+          return `  [${i}] title="${o.title || ''}" ${kws}`;
+        }).join('\n');
+        console.log(`[AI:${p.name}/${p.model}] mood="${parsed.mood_label || '?'}" outfits=${outfits.length}\n${summary}`);
+      } catch {
+        console.log(`[AI:${p.name}] JSON parse failed. Raw (first 400):`, text.slice(0, 400));
+      }
+      return res.status(200).json({
+        id: `${p.name}-${Date.now()}`,
+        type: 'message',
+        role: 'assistant',
+        model: p.model,
+        content: [{ type: 'text', text }],
+        stop_reason: r.data.choices?.[0]?.finish_reason || 'end_turn',
+        usage: {
+          input_tokens: r.data.usage?.prompt_tokens || 0,
+          output_tokens: r.data.usage?.completion_tokens || 0,
+        },
+      });
+    } catch (e) {
+      console.warn(`[AI] ${p.name} 예외: ${e.message} → 다음 프로바이더 시도`);
+      last = { p, ok: false, status: 500, data: { error: e.message } };
     }
-
-    return res.status(200).json({
-      id: `${useOpenAI ? 'openai' : 'groq'}-${Date.now()}`,
-      type: 'message',
-      role: 'assistant',
-      model,
-      content: [{ type: 'text', text }],
-      stop_reason: data.choices?.[0]?.finish_reason || 'end_turn',
-      usage: {
-        input_tokens: data.usage?.prompt_tokens || 0,
-        output_tokens: data.usage?.completion_tokens || 0,
-      },
-    });
-  } catch (e) {
-    return res.status(500).json({ error: e.message });
   }
+
+  return res.status(last?.status || 500).json({
+    error: `모든 AI 프로바이더 실패 (마지막: ${last?.p?.name || '없음'})`,
+    detail: last?.data,
+  });
 }

@@ -263,65 +263,50 @@ async function callNaverApi(query, display, sort) {
   return response.json();
 }
 
-// 하이브리드 검색 쿼리 생성 함수
-function generateSearchVariants(baseQuery, query, slot, gender) {
+// 검색 쿼리 캐스케이드 — 풀 키워드(트렌디) 우선, 결과 부족 시 토큰 깎아 보충.
+function generateSearchVariants(query, slot, gender) {
   const tokens = (query || '').split(/\s+/).filter(Boolean);
   const allowed = SLOT_CATEGORIES[slot] || [];
   const slotCat = tokens.find((t) => allowed.some((kw) => t.includes(kw))) || allowed[0] || '';
   const genderTok = gender || tokens.find((t) => /남성|여성|남자|여자/.test(t)) || '';
+  const full = (query || '').trim();
 
-  const variants = [
-    baseQuery, // 1순위: 기본
-  ];
+  const variants = [];
+  if (full) variants.push(full);                                      // 0순위: LLM 풀 키워드 (핏+아이템) — A1 핵심
+  if (full && !full.includes('무신사')) variants.push(`${full} 무신사`.trim()); // 1순위: 풀 키워드 + 무신사
+  if (slotCat) variants.push(`${genderTok} ${slotCat}`.trim());       // 2순위(폴백): 성별+아이템 (결과 보충용)
 
-  // 2순위: 무신사 필터링 (신뢰할 수 있는 큐레이션몰)
-  if (baseQuery && !baseQuery.includes('무신사')) {
-    variants.push(`${baseQuery} 무신사`.trim());
-  }
-
-  // 3순위: 슬롯만 (카테고리 단순화 - 결과 수 증가)
-  if (slotCat && !baseQuery.includes(slotCat)) {
-    variants.push(`${genderTok} ${slotCat}`.trim());
-  }
-
-  return variants.filter((v, i, a) => a.indexOf(v) === i && v.length > 0); // 중복 제거
+  return variants.filter((v, i, a) => a.indexOf(v) === i && v.length > 0);
 }
 
 async function searchNaver(query, display, sort, slot = 'default', gender = null) {
-  // LLM(8B)은 색상 토큰을 자주 무시하지 못해 좁은 검색어 만듦 → 결과 0건 빈박스의 주범.
-  // 정책: backend가 [성별 + 슬롯 카테고리]로 강제. 색·mood 매칭은 LLM 큐레이션이 사후 픽.
-  // 슬롯 카테고리에서 검출 가능하면 LLM이 만든 카테고리 토큰을 우선 사용, 못 찾으면 일반어.
-  const tokens = (query || '').split(/\s+/).filter(Boolean);
-  const allowed = SLOT_CATEGORIES[slot] || [];
-  const catFromQuery = tokens.find((t) => allowed.some((kw) => t.includes(kw)));
-  const slotCat = catFromQuery || allowed[0] || '';
-  const genderTok = gender || tokens.find((t) => /남성|여성|남자|여자/.test(t)) || '';
-  const baseQuery = slotCat ? `${genderTok} ${slotCat}`.trim() : (query || '');
-
-  // 🆕 하이브리드 쿼리 생성 — 여러 변형 쿼리를 병렬로 검색
-  const variants = generateSearchVariants(baseQuery, query, slot, gender);
+  // A1 수정: LLM이 만든 풀 키워드("여성 와이드 슬랙스")를 1순위로 검색하고,
+  // 결과 부족 시에만 토큰 깎은 폴백("여성 슬랙스")으로 보충.
+  // (예전엔 거꾸로 — 깎은 2단어부터 검색해 트렌디 키워드를 통째로 버림 = 추천이 촌스러운 원인)
+  const variants = generateSearchVariants(query, slot, gender);
   const variantResults = await Promise.all(
-    variants.map((q) =>
+    variants.map((q, vi) =>
       callNaverApi(q, display, sort)
-        .then((d) => ({ items: d.items || [], query: q }))
-        .catch(() => ({ items: [], query: q }))
+        .then((d) => ({ items: d.items || [], query: q, rank: vi }))
+        .catch(() => ({ items: [], query: q, rank: vi }))
     )
   );
 
-  // 결과 병합 — 중복 제거, 1순위 쿼리부터 우선
+  // 결과 병합 — 중복 제거, 풀 키워드(rank 0) 결과 우선. rank로 검색어 정확도 추적.
   const allItems = [];
   const seen = new Set();
   for (const result of variantResults) {
     for (const item of result.items) {
       if (!seen.has(item.link)) {
         seen.add(item.link);
+        item.__qrank = result.rank;
         allItems.push(item);
       }
     }
   }
 
   let data = { items: allItems.slice(0, 30) };
-  let usedQuery = variants[0] || baseQuery;
+  let usedQuery = variants[0] || (query || '');
 
   // 무신사 booster — 결과 안에 무신사가 3개 미만이면 "검색어 + 무신사"로 추가 검색
   const musinsaInPrimary = (data.items || []).filter((it) => /무신사|musinsa/i.test(it.mallName || ''));
@@ -361,6 +346,7 @@ async function searchNaver(query, display, sort, slot = 'default', gender = null
       brand: item.brand || null,
       category,
       is_direct_product: true,
+      _query_rank: item.__qrank ?? 9,
       _link_type: linkType,
       _mall_tier: getMallTier(mall),
       _has_model_keyword: MODEL_SHOT_KEYWORDS.test(cleanName),
@@ -431,6 +417,8 @@ async function searchNaver(query, display, sort, slot = 'default', gender = null
     const aMs = isMusinsa(a.mall);
     const bMs = isMusinsa(b.mall);
     if (aMs !== bMs) return aMs ? -1 : 1;
+    // 1.5순위: 검색어 정확도 — LLM 풀 키워드 결과 우선 (A1: 트렌디 키워드 보존)
+    if (a._query_rank !== b._query_rank) return (a._query_rank ?? 9) - (b._query_rank ?? 9);
     // 2순위: 셀렉트샵 CDN 이미지 우선
     if (a._is_clean_cdn !== b._is_clean_cdn) return a._is_clean_cdn ? -1 : 1;
     // 3순위: 멀티컷/세트 상품 강력 후순위
@@ -458,7 +446,7 @@ async function searchNaver(query, display, sort, slot = 'default', gender = null
     `gen=${genderFiltered.length} img=${withImage.length} trust=${trustedImage.length} → final=${ready.length}`
   );
 
-  return ready.map(({ _link_type, _mall_tier, _has_model_keyword, _has_multi_keyword, _is_clean_cdn, _matches_slot, _looks_other_slot, _violates_gender, ...rest }) => rest);
+  return ready.map(({ _link_type, _mall_tier, _has_model_keyword, _has_multi_keyword, _is_clean_cdn, _matches_slot, _looks_other_slot, _violates_gender, _query_rank, ...rest }) => rest);
 }
 
 // 폴백 신뢰 도메인 — 셀렉트샵 외에도 안정적으로 image 호스팅하는 CDN
