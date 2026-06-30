@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Sparkles, ArrowRight, ArrowLeft, ShoppingBag, Loader2, RefreshCw, X, Info, ExternalLink, Search, ChevronLeft, ChevronRight, Check } from 'lucide-react';
 import { MANUAL_TRENDS } from './trends';
-import { removeBackground } from '@imgly/background-removal';
+import { removeBackground, preload } from '@imgly/background-removal';
 
 // 네이버 쇼핑 이미지(pstatic CDN)를 같은 origin 프록시로 변환 → 누끼 시 CORS 우회.
 // dev: vite 프록시(/np-img) / prod: Vercel 함수(/api/img-proxy)
@@ -16,11 +16,77 @@ function toProxyUrl(url) {
   return url;
 }
 
-// 누끼 결과 캐시 — 같은 원본 URL 재처리 방지 (objectURL 공유)
+// 누끼 추론 디바이스 — WebGPU 지원 시 GPU(수배 빠름), 아니면 CPU.
+// 모델은 기본값(isnet_fp16) 유지 → 품질 손해 0.
+let _nukiDevice = (typeof navigator !== 'undefined' && navigator.gpu) ? 'gpu' : 'cpu';
+
+// 모델(WASM ~24MB) 1회 프리로드 — 첫 이미지가 다운로드 지연을 떠안지 않게 미리 받아둠.
+let _nukiPreloaded = false;
+export function warmupNuki() {
+  if (_nukiPreloaded) return;
+  _nukiPreloaded = true;
+  preload({ device: _nukiDevice }).catch(() => { _nukiPreloaded = false; });
+}
+
+// ── 누끼 결과 영구 캐시 (IndexedDB) — 새로고침·재방문 시 재처리 0 ──
+const IDB_NAME = 'clothesai-nuki';
+const IDB_STORE = 'blobs';
+function idbOpen() {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') return reject(new Error('no-idb'));
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbGet(key) {
+  try {
+    const db = await idbOpen();
+    return await new Promise((resolve, reject) => {
+      const req = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).get(key);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  } catch { return null; }
+}
+async function idbSet(key, blob) {
+  try {
+    const db = await idbOpen();
+    db.transaction(IDB_STORE, 'readwrite').objectStore(IDB_STORE).put(blob, key);
+  } catch { /* noop — 캐시 실패는 무시, 다음 방문에 재처리 */ }
+}
+
+// 누끼 결과 캐시 — 같은 원본 URL 재처리 방지.
+// 1) 메모리(objectURL 공유) → 2) IndexedDB 영구 → 3) 실제 누끼 추론.
 const _nukiCache = new Map();
 async function getNukiUrl(srcUrl) {
   if (_nukiCache.has(srcUrl)) return _nukiCache.get(srcUrl);
-  const blob = await removeBackground(toProxyUrl(srcUrl));
+
+  // 2) 영구 캐시 히트 → 추론 건너뜀
+  const cachedBlob = await idbGet(srcUrl);
+  if (cachedBlob) {
+    const objUrl = URL.createObjectURL(cachedBlob);
+    _nukiCache.set(srcUrl, objUrl);
+    return objUrl;
+  }
+
+  // 3) 실제 추론 — GPU 경로가 실패하면 CPU로 전역 폴백 후 1회 재시도
+  const proxied = toProxyUrl(srcUrl);
+  let blob;
+  try {
+    blob = await removeBackground(proxied, { device: _nukiDevice });
+  } catch (e) {
+    if (_nukiDevice === 'gpu') {
+      _nukiDevice = 'cpu';
+      _nukiPreloaded = false;
+      blob = await removeBackground(proxied, { device: 'cpu' });
+    } else {
+      throw e;
+    }
+  }
+
+  idbSet(srcUrl, blob); // 영구 저장 (비동기, await 불필요)
   const objUrl = URL.createObjectURL(blob);
   _nukiCache.set(srcUrl, objUrl);
   return objUrl;
@@ -137,6 +203,80 @@ const MOOD_CHIPS = [
   '꾸안꾸', '미니멀', '올드머니', '스트릿',
   '프렌치 빈티지', '캐주얼', '댄디', '스포티', 'Y2K',
 ];
+
+// 스타일 발견 풀 — 라벨 없는 무드컷(public/quiz/{성별}/{id}.webp). 각 룩에 숨은 속성 태그.
+// 사용자가 고른 룩들의 태그를 모아 ① 비슷한 룩을 더 보여주고 ② 공통점을 추출해 추천에 주입.
+const LOOKS = [
+  { id: 'min_neutral', tags: ['minimal', 'neutral', 'tailored', 'oversized'] },
+  { id: 'min_mono', tags: ['minimal', 'mono', 'sleek', 'tailored'] },
+  { id: 'min_relaxed', tags: ['minimal', 'neutral', 'oversized', 'relaxed'] },
+  { id: 'casual_denim', tags: ['casual', 'neutral', 'relaxed', 'denim'] },
+  { id: 'casual_knit', tags: ['casual', 'classic', 'knit', 'neutral'] },
+  { id: 'casual_sport', tags: ['casual', 'sporty', 'relaxed'] },
+  { id: 'street_over', tags: ['street', 'oversized', 'earthy', 'casual'] },
+  { id: 'street_mono', tags: ['street', 'mono', 'edgy'] },
+  { id: 'street_tech', tags: ['street', 'outdoor', 'tech', 'earthy'] },
+  { id: 'oldmoney_beige', tags: ['oldmoney', 'classic', 'neutral', 'tailored'] },
+  { id: 'oldmoney_vest', tags: ['oldmoney', 'preppy', 'classic', 'knit'] },
+  { id: 'oldmoney_coat', tags: ['oldmoney', 'classic', 'tailored', 'neutral'] },
+  { id: 'lovely_pastel', tags: ['romantic', 'pastel', 'soft'] },
+  { id: 'lovely_floral', tags: ['romantic', 'pastel', 'soft', 'print'] },
+  { id: 'lovely_knit', tags: ['romantic', 'knit', 'soft', 'classic'] },
+  { id: 'gorp_shell', tags: ['outdoor', 'earthy', 'tech', 'relaxed'] },
+  { id: 'gorp_fleece', tags: ['outdoor', 'earthy', 'casual', 'relaxed'] },
+  { id: 'sporty_track', tags: ['sporty', 'casual', 'relaxed'] },
+  { id: 'sporty_active', tags: ['sporty', 'active', 'fitted'] },
+  { id: 'y2k_denim', tags: ['retro', 'denim', 'bold', 'street'] },
+  { id: 'y2k_color', tags: ['retro', 'bold', 'playful', 'street'] },
+  { id: 'french_chic', tags: ['minimal', 'french', 'classic', 'neutral'] },
+  { id: 'workwear', tags: ['casual', 'earthy', 'rugged', 'street'] },
+  { id: 'smart_casual', tags: ['smart', 'classic', 'tailored', 'neutral'] },
+];
+const styleImgPath = (gender, id) => `/quiz/${gender === '남성' ? 'men' : 'women'}/${id}.webp`;
+
+// 태그 → 한국어 스타일 단어 (공통점을 추천 쿼리로 변환)
+const TAG_KO = {
+  oldmoney: '올드머니', minimal: '미니멀', street: '스트릿', romantic: '러블리', sporty: '스포티',
+  retro: 'Y2K', outdoor: '고프코어', classic: '클래식', casual: '캐주얼', preppy: '프레피',
+  french: '프렌치', smart: '세미정장', edgy: '시크', rugged: '워크웨어',
+  neutral: '뉴트럴', mono: '모노톤', earthy: '어스톤', pastel: '파스텔', bold: '비비드',
+  oversized: '오버핏', tailored: '테일러드', relaxed: '루즈핏', fitted: '슬림',
+  knit: '니트', denim: '데님', tech: '테크', soft: '소프트', sleek: '슬릭', print: '프린트',
+  playful: '키치', active: '액티브',
+};
+// 무드 계열(추천 쿼리 우선) vs 보조(질감·실루엣)
+const MOOD_TAGS = new Set(['oldmoney', 'minimal', 'street', 'romantic', 'sporty', 'retro', 'outdoor', 'classic', 'casual', 'preppy', 'french', 'smart', 'edgy', 'rugged']);
+
+const lookById = (id) => LOOKS.find((l) => l.id === id);
+// 고른 룩들의 태그 빈도 집계
+function aggregateTags(ids) {
+  const freq = {};
+  ids.forEach((id) => (lookById(id)?.tags || []).forEach((t) => { freq[t] = (freq[t] || 0) + 1; }));
+  return freq;
+}
+// 한 룩이 현재 취향(freq)과 얼마나 겹치나
+const overlapScore = (tags, freq) => tags.reduce((s, t) => s + (freq[t] || 0), 0);
+// 안 보여준 룩 중 취향과 가장 비슷한 N개
+function similarUnseen(pickedIds, seenIds, n) {
+  const freq = aggregateTags(pickedIds);
+  const seen = new Set(seenIds);
+  return LOOKS
+    .filter((l) => !seen.has(l.id))
+    .map((l) => ({ id: l.id, s: overlapScore(l.tags, freq) }))
+    .filter((x) => x.s > 0)
+    .sort((a, b) => b.s - a.s)
+    .slice(0, n)
+    .map((x) => x.id);
+}
+// 공통점 → 상위 스타일 단어 (styleQuery용): 무드 우선 + 보조 1~2개
+function commonalityQuery(ids) {
+  const sorted = Object.entries(aggregateTags(ids)).sort((a, b) => b[1] - a[1]);
+  const moods = sorted.filter(([t]) => MOOD_TAGS.has(t)).slice(0, 2).map(([t]) => TAG_KO[t]);
+  const others = sorted.filter(([t]) => !MOOD_TAGS.has(t)).slice(0, 2).map(([t]) => TAG_KO[t]);
+  return [...moods, ...others].filter(Boolean).join(' ');
+}
+// 초기 시드 — 무드별로 흩어진 다양한 9장
+const SEED_IDS = ['min_neutral', 'casual_denim', 'street_over', 'oldmoney_beige', 'lovely_pastel', 'gorp_shell', 'sporty_track', 'y2k_denim', 'smart_casual'];
 
 // 성별만 받으면 나머지 프로필은 평균값으로 채워 룩북 생성 진입을 단축
 const buildDefaultProfile = (gender) => ({
@@ -255,21 +395,40 @@ mood_label과 검색어는 **이 토큰들에서 직접 파생**되어야 한다
 → 톤만 참고하고, 사용자 입력 어휘로 **새 라벨**을 만든다.
 
 ### 4. outfits 생성 규칙
-- **반드시 정확히 3개의 서로 다른 코디** (각: 모자/상의/하의/신발 — 가방·양말 X)
+- **반드시 정확히 3개의 서로 다른 코디**. 각 코디는 **상의·하의·신발 필수**, **모자는 선택**(아래 모자 규칙).
+- 가방·양말 X
 - 각 코디는 **같은 입력 무드 안에서 다른 방향성** (예: 여행이면 1번-에어컨 카페형 / 2번-야외 액티브 / 3번-호텔 디너)
 - 각 outfit의 title도 입력 어휘 반영 (예: "공항 패션", "리조트 디너", "휴양지 산책")
-- 각 아이템(총 12개)마다 네이버 검색어(search_keyword) 작성
+- 각 아이템마다 네이버 검색어(search_keyword) 작성
 
-## 검색어 작성 규칙 (매우 중요)
-- 반드시 [성별] + [카테고리] **2단어**만 사용 (모든 슬롯 공통)
+#### 모자 규칙 (중요 — 절대 항상 넣지 말 것)
+- 스타일에 **어울릴 때만** 모자를 넣어라. 안 어울리면 hat 슬롯을 **아예 생략**(키 자체를 빼라).
+- 포함 권장: **스트릿 · 스포티 · 고프코어 · 캐주얼/Y2K(어울리면)** → 볼캡/비니/버킷햇/스냅백
+- 제외 권장: **미니멀 · 올드머니 · 러블리 · 단정한 데이트/오피스 룩** → 모자 생략 (캐주얼 캡이 무드를 깸)
+- 굳이 단정한 스타일에 넣어야 하면 그 무드에 맞는 모자만: 올드머니→베레모/페도라/파나마햇, 러블리→리본 베레모/밀짚햇
+
+## 검색어 작성 규칙 (매우 중요 — 트렌디한 상품을 띄우는 핵심)
+- 형식: **[성별] + [핏/무드 수식어] + [구체 아이템명]** (3단어)
 - 성별 토큰 필수: "${profile.gender === '남성' ? '남성' : '여성'}"
-- 카테고리는 구체 명칭: 셔츠, 슬랙스, 청바지, 조거팬츠, 반바지, 스니커즈, 첼시부츠, 로퍼, 볼캡, 비니, 버킷햇, 맨투맨, 후드, 가디건, 니트 등
-- **색상은 검색어에 절대 포함 X** — color/color_hex 필드로만 전달 (셀렉트샵엔 색상별 카탈로그 빈약해서 0건 위험)
-- **금지 단어**: "오버핏", "와이드", "슬림", "빈티지", "헤비", "코튼", "스판", "무지", "프리미엄" 등 핏/소재/디테일 형용사 절대 X
-- 좋은 예: "남성 셔츠" / "여성 슬랙스" / "남성 첼시부츠" / "여성 볼캡"
-- 나쁜 예: "남성 오버핏 셔츠 차콜" (좁음, 0건 위험) / "남성 슬랙스 베이지" (셀렉트샵엔 색상별 라인업 부족)
+- ❌ "[성별]+[카테고리]" 2단어(예: "남성 셔츠", "여성 바지")는 **금지** — 너무 광범위해서 촌스럽고 오래된 상품만 뜬다. (옷이 별로인 정확한 원인)
+- ✅ **핏/실루엣 수식어**를 꼭 붙여라. 핏 단어가 트렌드의 절반이다.
+  - 핏/무드 수식어: 와이드, 세미와이드, 오버핏, 세미오버, 벌룬핏, 하이웨스트, 크롭, 일자, 원턱
+  - 구체 아이템: 슬랙스, 치노팬츠, 와이드데님, 케이블니트, 오버핏후드티, 발마칸코트, 트랙자켓, 카고팬츠, 페니로퍼, 청키스니커즈, 트레킹화 등
+- 스타일별 추천 어휘(참고):
+  · 미니멀 → 케이블니트 · 반폴라니트 · 와이드슬랙스 · 일자데님 · 로퍼 · 발마칸코트
+  · 캐주얼 → 오버핏맨투맨 · 옥스퍼드셔츠 · 와이드데님 · 데님자켓 · 스니커즈
+  · 스트릿 → 오버핏후드티 · 그래픽맨투맨 · 와이드카고 · 청키스니커즈 · 볼캡
+  · 올드머니 → 폴로니트 · 트위드자켓 · 치노팬츠 · 페니로퍼 · 트렌치코트
+  · 러블리 → 레이스블라우스 · 셔링니트 · 플리츠스커트 · 발레플랫
+  · 고프코어 → 후리스 · 아노락 · 카고팬츠 · 트레킹화 · 바람막이
+  · 스포티 → 트랙자켓 · 트랙팬츠 · 바이커쇼츠 · 러닝화 · 볼캡
+  · Y2K → 크롭티 · 로우라이즈카고 · 하이웨스트와이드데님 · 어글리슈즈
+- 좋은 예: "여성 와이드 슬랙스" / "남성 오버핏 후드티" / "여성 케이블 니트" / "남성 발마칸 코트"
+- 나쁜 예: "남성 셔츠" / "여성 바지" (2단어 = 촌스러움)
+- ⚠️ 단, 네이버에서 결과가 나오는 **대중적 키워드**만 사용 (희귀한 조합 금지). 위 어휘는 검증된 대중어다.
+- **색상은 검색어에 절대 포함 X** — color/color_hex 필드로만 전달
 - 브랜드명 절대 X
-- 색상 다양성은 outfit 별로 color 필드로 표현 (검색어가 같아도 outfit별 다른 색감 의도 보존)
+- 색상 다양성은 outfit별 color 필드로 표현
 
 ## 시각적 스타일 가이드 (style_guide)
 사용자가 한눈에 "어떤 느낌인지" 알 수 있도록 짧은 칩으로 변환:
@@ -327,23 +486,29 @@ mood_label과 검색어는 **이 토큰들에서 직접 파생**되어야 한다
   if (start === -1 || end === -1) throw new Error('Claude 응답에서 JSON을 찾을 수 없습니다.');
   const result = JSON.parse(cleaned.slice(start, end + 1));
 
-  // 가드 — outfits이 3개 미만이면 부족분을 첫 번째 코디 복제로 채워 화살표 동작 보장
+  // 가드 — 0개면 에러. 1~2개면 가짜 복제하지 말고 있는 만큼만 정직하게 보여준다(A4).
   if (!Array.isArray(result.outfits) || result.outfits.length === 0) {
     throw new Error('AI가 코디를 생성하지 못했습니다. 다시 시도해 주세요.');
   }
-  while (result.outfits.length < 3) {
-    const base = JSON.parse(JSON.stringify(result.outfits[0]));
-    base.title = `${base.title || '코디'} · 변형 ${result.outfits.length + 1}`;
-    result.outfits.push(base);
-  }
+  result.outfits = result.outfits.slice(0, 3);
 
   // ─── 2단계 — Worker /batch-search로 12개 검색어 동시 질의 ───
   // LLM이 일부 슬롯의 search_keyword를 누락해도 default 카테고리어로 자동 채워 항상 검색.
-  const DEFAULT_SLOT_CAT = { hat: '모자', top: '셔츠', bottom: '바지', shoes: '신발' };
+  // 상의·하의·신발은 필수. 모자는 AI가 스타일에 맞다고 판단해 넣었을 때만(=search_keyword 있을 때만) 검색.
+  const DEFAULT_SLOT_CAT = { top: '셔츠', bottom: '바지', shoes: '신발' };
   const queries = [];
   result.outfits.forEach((outfit, oi) => {
     if (!outfit.items) outfit.items = {};
-    ['hat', 'top', 'bottom', 'shoes'].forEach((slot) => {
+    // 모자: ① 없거나 검색어 없으면 제거(강제 안 함). ② 단정한 스타일에 캐주얼 캡이 끼면 제거(LLM 실수 방지).
+    const hatKw = outfit.items.hat?.search_keyword || '';
+    const dressyStyle = /올드머니|미니멀|클래식|러블리|단정|오피스|로맨틱|프레피|세미정장/.test(styleQuery);
+    const casualHat = /볼캡|비니|스냅백|버킷|벙거지|캡/.test(hatKw);
+    if (!hatKw || (dressyStyle && casualHat)) {
+      delete outfit.items.hat;
+    }
+    const slots = ['top', 'bottom', 'shoes'];
+    if (outfit.items.hat) slots.unshift('hat');
+    slots.forEach((slot) => {
       let item = outfit.items[slot];
       if (!item) {
         item = outfit.items[slot] = {};
@@ -688,8 +853,8 @@ function ProfileForm({ profile, setProfile, onNext, onBack }) {
 
 const INITIAL_PROFILE = { gender: '', age: '', height: '', bodyType: '', budget: '', dislikes: '' };
 const INITIAL_MESSAGES = [
-  { role: 'ai', type: 'text', content: '안녕하세요, 클로예요.\n어떤 자리·무드로 코디 짜드릴까요?\n칩 골라주시면 빠르게, 더 적고 싶으면 자유롭게 적어주세요.' },
-  { role: 'ai', type: 'stylePicker' },
+  { role: 'ai', type: 'text', content: '안녕하세요, 클로예요.\n취향에 맞는 코디를 골라드릴게요.\n먼저, 누구 옷을 찾으세요?' },
+  { role: 'ai', type: 'quickReplies', content: ['남성', '여성'] },
 ];
 
 function StyleChipRow({ label, items, value, onPick, disabled }) {
@@ -786,6 +951,95 @@ function StylePicker({ onSubmit, disabled }) {
   );
 }
 
+// 스타일 발견 — 라벨 없는 무드컷에서 끌리는 걸 탭하면, 그와 비슷한 룩이 아래로 더 떠오름(스포티파이식).
+// 고른 룩들의 공통 속성을 추출해 추천 쿼리로 변환.
+function StyleDiscovery({ gender, onSubmit, disabled }) {
+  const [visible, setVisible] = useState(SEED_IDS);
+  const [picked, setPicked] = useState([]);
+
+  const toggle = (id) => {
+    if (disabled) return;
+    if (picked.includes(id)) { setPicked(picked.filter((x) => x !== id)); return; }
+    const next = [...picked, id];
+    setPicked(next);
+    // 고른 것과 비슷한 안 보여준 룩 3개를 아래에 추가
+    const more = similarUnseen(next, visible, 3);
+    if (more.length) setVisible([...visible, ...more]);
+  };
+
+  const canSubmit = !disabled && picked.length >= 3;
+  const hint = commonalityQuery(picked); // 실시간 공통점 미리보기
+
+  return (
+    <div className="fade-in" style={{ width: '100%' }}>
+      {/* 헤더 */}
+      <div className="text-center" style={{ marginBottom: 16 }}>
+        <div className="font-body" style={{ fontSize: 10, letterSpacing: '0.38em', textTransform: 'uppercase', color: 'var(--accent)', marginBottom: 8 }}>
+          Discover
+        </div>
+        <div className="font-display italic" style={{ fontSize: 23, fontWeight: 500, color: 'var(--ink)', lineHeight: 1.15 }}>
+          마음에 드는 스타일을 고르세요
+        </div>
+        <div className="font-body" style={{ fontSize: 12, color: 'var(--muted)', marginTop: 7 }}>
+          {picked.length >= 1
+            ? <>고를수록 비슷한 게 더 떠요 — <span style={{ color: 'var(--ink)', fontWeight: 600 }}>{hint || `${picked.length}개`}</span></>
+            : <>끌리는 사진을 탭하세요 · 3개 이상</>}
+        </div>
+      </div>
+
+      {/* 그리드 — 타이트한 룩북 컨택트시트 */}
+      <div className="grid grid-cols-2 sm:grid-cols-3" style={{ gap: 8 }}>
+        {visible.map((id) => {
+          const order = picked.indexOf(id);
+          const active = order !== -1;
+          return (
+            <button key={id} type="button" disabled={disabled} onClick={() => toggle(id)}
+              className="btn-press fade-in"
+              style={{
+                position: 'relative', borderRadius: 12, overflow: 'hidden', padding: 0,
+                aspectRatio: '3 / 4', background: '#E8E6E1', cursor: disabled ? 'default' : 'pointer',
+                outline: active ? '2.5px solid var(--ink)' : '0 solid transparent', outlineOffset: -2,
+                transform: active ? 'scale(0.985)' : 'none', transition: 'transform 0.2s ease',
+              }}>
+              <img src={styleImgPath(gender, id)} alt="" loading="lazy"
+                onError={(e) => { e.currentTarget.style.opacity = '0'; }}
+                style={{
+                  position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
+                  filter: active ? 'none' : 'brightness(0.98)',
+                  transform: active ? 'scale(1.03)' : 'none',
+                  transition: 'filter 0.25s ease, transform 0.45s ease',
+                }} />
+              {!active && <div style={{ position: 'absolute', inset: 0, background: 'rgba(250,249,246,0.10)' }} />}
+              {active && (
+                <div style={{
+                  position: 'absolute', top: 7, right: 7, width: 24, height: 24, borderRadius: 12,
+                  background: 'var(--ink)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 12, fontWeight: 700, fontFamily: 'monospace', boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                }}>
+                  {order + 1}
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* CTA */}
+      <button type="button" onClick={() => canSubmit && onSubmit(picked)} disabled={!canSubmit}
+        className="btn-press font-body"
+        style={{
+          marginTop: 16, width: '100%', padding: '15px 16px', borderRadius: 12,
+          background: 'var(--ink)', color: '#fff', fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase',
+          opacity: canSubmit ? 1 : 0.28, cursor: canSubmit ? 'pointer' : 'not-allowed',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+        }}>
+        {canSubmit ? '이 취향으로 코디 받기' : `${picked.length}/3 — 더 골라주세요`}
+        {canSubmit && <ArrowRight size={14} />}
+      </button>
+    </div>
+  );
+}
+
 const LOADING_PHASES = [
   '스타일 표현 분석 중',
   '톤과 색감 잡는 중',
@@ -798,7 +1052,7 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 function ChatView() {
   const [messages, setMessages] = useState(INITIAL_MESSAGES);
   const [profile, setProfile] = useState(INITIAL_PROFILE);
-  // 0: 스타일(StylePicker) → 1: 성별 → 2+: 자유 대화 (룩북 이후 변형 요청)
+  // 0: 성별 → 1: 스타일 발견(StyleDiscovery) → 2+: 자유 대화 (룩북 이후 변형 요청)
   const [stage, setStage] = useState(0);
   const [styleQuery, setStyleQuery] = useState('');
   const [input, setInput] = useState('');
@@ -850,7 +1104,7 @@ function ChatView() {
 
   const appendAi = (...items) => setMessages((prev) => [...prev, ...items.map((it) => ({ role: 'ai', ...it }))]);
   const appendUser = (text) => setMessages((prev) => [
-    ...prev.filter((m) => m.type !== 'quickReplies' && m.type !== 'stylePicker'),
+    ...prev.filter((m) => m.type !== 'quickReplies' && m.type !== 'stylePicker' && m.type !== 'styleQuiz'),
     { role: 'user', type: 'text', content: text },
   ]);
 
@@ -895,52 +1149,56 @@ function ChatView() {
     }
   };
 
-  // 스타일이 정해진 뒤 공통 처리 (사용자 메시지 출력은 호출자가 책임)
-  const advanceFromStyle = async (userText) => {
-    setStyleQuery(userText);
+  // 성별 선택 → 기본 프로필 채우고 스타일 퀴즈로 진입
+  const advanceToQuiz = async (gender) => {
+    const next = buildDefaultProfile(gender);
+    setProfile(next);
     setStage(1);
     await delay(350);
     appendAi(
-      { type: 'text', content: '거의 다 됐어요. 마지막으로 성별만 알려주세요.' },
-      { type: 'quickReplies', content: ['남성', '여성'] },
+      { type: 'text', content: '좋아요! 끌리는 스타일 무드를 골라주세요.' },
+      { type: 'styleQuiz' },
     );
   };
 
-  // StylePicker 칩 제출 — 화면에 사용자 메시지 찍고 다음 단계
-  const handleStylePick = async (text) => {
-    const userText = (text || '').trim();
-    if (!userText || loading || stage !== 0) return;
-    appendUser(userText);
-    await advanceFromStyle(userText);
+  // 스타일 발견 제출 — 고른 룩들의 공통 속성을 추출해 styleQuery로 변환 → 룩북 생성
+  const handleStyleQuizSubmit = async (pickedIds) => {
+    if (loading || stage !== 1) return;
+    const query = commonalityQuery(pickedIds);
+    if (!query) return;
+    appendUser(query);
+    setStyleQuery(query);
+    setStage(2);
+    await generateLookbook(query, profile);
   };
 
   const handleAnswer = async (text) => {
     const userText = text.trim();
     if (!userText || loading) return;
-
-    appendUser(userText);
     setInput('');
 
-    // stage 0: 하단 입력창에서 자유 입력으로 스타일을 직접 답한 경우
+    // stage 0: 성별 선택
     if (stage === 0) {
-      await advanceFromStyle(userText);
-      return;
-    }
-
-    // stage 1: 성별 → 기본 프로필로 채우고 바로 룩북 생성
-    if (stage === 1) {
+      appendUser(userText);
       if (!['남성', '여성'].includes(userText)) {
-        await delay(350);
+        await delay(300);
         appendAi(
-          { type: 'text', content: '아래 버튼 중 하나로 선택해주세요.' },
+          { type: 'text', content: '아래 버튼으로 선택해주세요.' },
           { type: 'quickReplies', content: ['남성', '여성'] },
         );
         return;
       }
-      const next = buildDefaultProfile(userText);
-      setProfile(next);
+      await advanceToQuiz(userText);
+      return;
+    }
+
+    appendUser(userText);
+
+    // stage 1: 퀴즈 대신 하단 입력창에 직접 스타일을 적은 경우 (자유 입력 fallback)
+    if (stage === 1) {
+      setStyleQuery(userText);
       setStage(2);
-      await generateLookbook(styleQuery, next);
+      await generateLookbook(userText, profile);
       return;
     }
 
@@ -968,8 +1226,8 @@ function ChatView() {
 
   const placeholder = (() => {
     if (loading) return 'Clo가 답하는 중…';
-    if (stage === 0) return '위 칩을 골라주세요 (또는 자유롭게 적기)';
-    if (stage === 1) return '성별 버튼을 눌러주세요';
+    if (stage === 0) return '남성 / 여성 중 선택해주세요';
+    if (stage === 1) return '위에서 무드를 골라주세요 (또는 자유롭게 적기)';
     return '바꾸고 싶은 표현을 적어주세요 (예: 더 캐주얼하게)';
   })();
 
@@ -1028,11 +1286,11 @@ function ChatView() {
               </div>
             );
           }
-          if (msg.type === 'stylePicker') {
-            // 한 번만 활성 — 이미 스타일을 보냈으면(stage > 0) 칩 비활성화
+          if (msg.type === 'styleQuiz') {
+            // 한 번만 활성 — 이미 선택했으면(stage > 1) 비활성화. 채팅 버블이 아니라 전체 폭 사용.
             return (
-              <div key={i} className="flex justify-start fade-in">
-                <StylePicker onSubmit={handleStylePick} disabled={stage !== 0 || loading} />
+              <div key={i} className="fade-in" style={{ padding: '4px 0' }}>
+                <StyleDiscovery gender={profile.gender} onSubmit={handleStyleQuizSubmit} disabled={stage !== 1 || loading} />
               </div>
             );
           }
@@ -1762,6 +2020,9 @@ export default function App() {
     document.head.appendChild(styleEl);
     return () => { document.head.removeChild(styleEl); };
   }, []);
+
+  // 누끼 모델 프리로드 — 첫 추천이 뜨기 전에 WASM 모델을 미리 받아둠
+  useEffect(() => { warmupNuki(); }, []);
 
   return (
     <div className="font-body min-h-screen" style={{ background: 'var(--cream)', color: 'var(--ink)' }}>
